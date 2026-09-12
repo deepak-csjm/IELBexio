@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IelBexio.Ai/IelBexio.Ai.csproj" />
+    <Project Path="src/IelBexio.Application/IelBexio.Application.csproj" />
+    <Project Path="src/IelBexio.Connectors.Amazon/IelBexio.Connectors.Amazon.csproj" />
+    <Project Path="src/IelBexio.Connectors.Bexio/IelBexio.Connectors.Bexio.csproj" />
+    <Project Path="src/IelBexio.Connectors.Shopify/IelBexio.Connectors.Shopify.csproj" />
+    <Project Path="src/IelBexio.Domain/IelBexio.Domain.csproj" />
+    <Project Path="src/IelBexio.Infrastructure/IelBexio.Infrastructure.csproj" />
+    <Project Path="src/IelBexio.Web/IelBexio.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IelBexio.IntegrationTests/IelBexio.IntegrationTests.csproj" />
+    <Project Path="tests/IelBexio.UnitTests/IelBexio.UnitTests.csproj" />
+  </Folder>
+</Solution>

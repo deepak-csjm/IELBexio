@@ -1,0 +1,34 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!--
+      Suppressed with reason (everything else stays an error via TreatWarningsAsErrors):
+        CA1000 static members on generic types  - Result<T>.Success / AiResult<T>.Ok are the idiomatic
+                                                  factory pattern; the rule predates it.
+        CA1716 member name is a VB keyword      - no VB consumer exists or is planned.
+        CA1031 catch general exception          - deliberate at adapter/worker boundaries, where an
+                                                  unclassified failure must become a classified result.
+        CA2007 ConfigureAwait                   - ASP.NET Core has no synchronisation context.
+        CA1848 LoggerMessage delegates          - not worth the ceremony at POC scale.
+        CA1062 null-check public args           - nullable reference types already enforce this.
+        CA1812 uninstantiated internal class    - DI-instantiated types.
+        CA1002/CA1819 collection/array exposure - EF Core navigation collections require List<T>.
+        CA1305/CA1307/CA1310 culture            - InvariantGlobalization is off and formats are explicit
+                                                  where it matters (Money.ToString).
+        CA1707 underscores in identifiers       - test method names.
+        CA5394 non-cryptographic Random         - only used for retry jitter, never for security.
+        CA1724 type name matches namespace      - Domain type names are the clearer choice.
+    -->
+    <NoWarn>$(NoWarn);CA1000;CA1716;CA1848;CA1873;CA1031;CA2007;CA1062;CA1812;CA1002;CA1819;CA1305;CA1307;CA1310;CA1707;CA5394;CA1724</NoWarn>
+  </PropertyGroup>
+</Project>

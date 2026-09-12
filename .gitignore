@@ -1,0 +1,14 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.env
+.env.local
+appsettings.*.local.json
+TestResults/
+artifacts/
+*.received.*
+node_modules/
+.playwright/
+local-blobs/
