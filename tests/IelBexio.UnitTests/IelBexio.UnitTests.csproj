@@ -1,23 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="WireMock.Net" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Using Include="Xunit" />
-  </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\src\IelBexio.Domain\IelBexio.Domain.csproj" />
     <ProjectReference Include="..\..\src\IelBexio.Application\IelBexio.Application.csproj" />
@@ -26,7 +21,9 @@
     <ProjectReference Include="..\..\src\IelBexio.Connectors.Shopify\IelBexio.Connectors.Shopify.csproj" />
     <ProjectReference Include="..\..\src\IelBexio.Connectors.Amazon\IelBexio.Connectors.Amazon.csproj" />
     <ProjectReference Include="..\..\src\IelBexio.Ai\IelBexio.Ai.csproj" />
-    <ProjectReference Include="..\..\src\IelBexio.Web\IelBexio.Web.csproj" />
   </ItemGroup>
-
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="FluentAssertions" />
+  </ItemGroup>
 </Project>

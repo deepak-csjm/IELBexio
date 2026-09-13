@@ -178,6 +178,20 @@ public sealed class TaxDeterminationService
                 $"Matched rule '{rule.InternalTaxCode}' ({rule.RatePercent}% {rule.TaxType}) for country " +
                 $"{rule.CountryCode} valid on {onDate:yyyy-MM-dd}. Rate {(backComputed ? "back-computed from tax ÷ net" : "taken from the source document")}. " +
                 $"Place of supply assumed to be the billing country — verify.";
+
+            // A zero rate is structurally ambiguous even when a rule matches it: zero-rating, exemption,
+            // export and reverse charge all present as "no tax" in source data, and they are not
+            // interchangeable for reporting. Matching the rate therefore tells us the number is right
+            // but not that the treatment is, so a zero-rate conclusion is always capped below the
+            // high-confidence threshold and routed to a human. Refusing to be confident here is the
+            // point of the design (§6, §39).
+            if (rule.TaxType is TaxType.ZeroRated or TaxType.Exempt)
+            {
+                assessment.ConfidenceSignal = Math.Min(assessment.ConfidenceSignal, 0.75m);
+                assessment.Rationale +=
+                    " Zero/exempt treatment cannot be distinguished from export or reverse charge using " +
+                    "the data available — human determination required.";
+            }
         }
         else if (effectiveRate == 0m && line.TaxAmount == 0m)
         {

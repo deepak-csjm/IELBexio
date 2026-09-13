@@ -41,9 +41,17 @@ public sealed class BexioConnection : TenantEntity
     /// <summary>Which client the connection belongs to, so rotating client ids invalidates stale rows.</summary>
     public string? ClientIdFingerprint { get; set; }
 
-    public bool HasUsableRefreshToken =>
+    /// <summary>
+    /// Whether a refresh token exists and has not expired as of <paramref name="asOf"/>.
+    /// <para>
+    /// The instant is a parameter rather than a read of <c>DateTimeOffset.UtcNow</c> on purpose: a
+    /// domain entity that reaches for the ambient clock is untestable and, worse, can disagree with the
+    /// clock the surrounding service is using. Callers pass their injected <c>IClock</c>.
+    /// </para>
+    /// </summary>
+    public bool HasUsableRefreshToken(DateTimeOffset asOf) =>
         !string.IsNullOrEmpty(ProtectedRefreshToken) &&
-        (RefreshTokenExpiresAt is null || RefreshTokenExpiresAt > DateTimeOffset.UtcNow);
+        (RefreshTokenExpiresAt is null || RefreshTokenExpiresAt > asOf);
 }
 
 /// <summary>
