@@ -71,15 +71,33 @@ public sealed class InvoiceWorkflowTests
     }
 
     [Fact]
-    public void A_synced_invoice_is_terminal_and_can_never_be_posted_again()
+    public void A_synced_invoice_can_never_be_posted_again()
     {
-        InvoiceWorkflow.AllowedFrom(InvoiceWorkflowState.Synced).Should().BeEmpty();
+        // Reconciliation must be able to flag a synced invoice whose Bexio counterpart has changed or
+        // vanished, so Synced is not a dead end — but nothing it leads to is sync-eligible, which is
+        // the property that actually prevents a second posting.
+        var allowed = InvoiceWorkflow.AllowedFrom(InvoiceWorkflowState.Synced);
+
+        allowed.Should().BeEquivalentTo([InvoiceWorkflowState.ReconciliationRequired]);
+        allowed.Should().NotIntersectWith(InvoiceWorkflow.SyncEligible);
 
         var invoice = NewInvoice();
         invoice.RestoreWorkflowState(InvoiceWorkflowState.Synced);
 
         var act = () => invoice.TransitionTo(InvoiceWorkflowState.QueuedForBexio);
         act.Should().Throw<InvalidWorkflowTransitionException>();
+    }
+
+    [Fact]
+    public void No_state_reachable_from_synced_leads_directly_back_to_posting()
+    {
+        // Walks the graph from Synced and asserts that returning to a sync-eligible state always
+        // requires passing through review and approval again.
+        foreach (var next in InvoiceWorkflow.AllowedFrom(InvoiceWorkflowState.Synced))
+        {
+            InvoiceWorkflow.AllowedFrom(next).Should().NotIntersectWith(InvoiceWorkflow.SyncEligible,
+                "reaching a posting state from {0} must require a fresh approval", next);
+        }
     }
 
     [Fact]

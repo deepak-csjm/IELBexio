@@ -21,9 +21,10 @@ namespace IelBexio.Infrastructure.Workflow;
 /// The order of operations is the whole design, and it is deliberately paranoid:
 /// </para>
 /// <list type="number">
-/// <item><description>Refuse anything not in an approved, sync-eligible state.</description></item>
 /// <item><description>Check whether this source document was already synchronised — by idempotency key,
-/// not by our own row id, so a re-imported duplicate is caught too.</description></item>
+/// not by our own row id, so a re-imported duplicate is caught too. This comes first so a replayed
+/// message for finished work is acknowledged rather than being retried until it dead-letters.</description></item>
+/// <item><description>Refuse anything not in an approved, sync-eligible state.</description></item>
 /// <item><description>Re-run preflight. Configuration can change between approval and dispatch.</description></item>
 /// <item><description>Verify the approval still matches the invoice's financial content.</description></item>
 /// <item><description>Reserve the idempotency key in the database <em>before</em> calling Bexio.</description></item>
@@ -72,24 +73,17 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
             return Result.Failure(nameof(SyncErrorCategory.Permanent), $"Invoice {invoiceId} no longer exists.");
         }
 
-        // ---- 1. Only approved invoices may be posted (acceptance criterion 12) --------------------
-        if (!InvoiceWorkflow.SyncEligible.Contains(invoice.WorkflowState))
-        {
-            return Result.Failure(
-                nameof(SyncErrorCategory.Permanent),
-                $"Invoice {invoiceId} is in state {invoice.WorkflowState}, which is not eligible for synchronisation. " +
-                "Only an approved invoice may be sent to Bexio.");
-        }
-
-        if (invoice.ApprovalStatus != ApprovalStatus.Approved)
-        {
-            return Result.Failure(nameof(SyncErrorCategory.Permanent), $"Invoice {invoiceId} has not been approved.");
-        }
-
         var idempotencyKey = IdempotencyKey.ForInvoiceSync(
             invoice.TenantId, invoice.SourceSystem, invoice.SourceDocumentId, invoice.SourceDocumentVersion);
 
-        // ---- 2. Already synchronised? (§19) ----------------------------------------------------------
+        // ---- 1. Has this source document already been synchronised? (§19) ------------------------
+        // Checked FIRST, before the eligibility gate. A replayed message for an already-synced invoice
+        // is a success to acknowledge, not an error: the work it asked for is done. Ordering the
+        // eligibility check ahead of this would make every duplicate delivery look like a failure and
+        // would leave the message being retried until it dead-lettered.
+        //
+        // This cannot be used to smuggle an unapproved invoice through: a succeeded attempt row only
+        // exists if a prior, approved dispatch created it.
         var existing = await _db.SynchronizationAttempts
             .FirstOrDefaultAsync(a => a.IdempotencyKey == idempotencyKey, cancellationToken);
 
@@ -112,8 +106,11 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
                     invoice.TransitionTo(InvoiceWorkflowState.Syncing);
                 }
 
-                invoice.TransitionTo(InvoiceWorkflowState.Synced);
-                invoice.SyncStatus = SyncStatus.Synced;
+                if (InvoiceWorkflow.CanTransition(invoice.WorkflowState, InvoiceWorkflowState.Synced))
+                {
+                    invoice.TransitionTo(InvoiceWorkflowState.Synced);
+                    invoice.SyncStatus = SyncStatus.Synced;
+                }
             }
 
             await _db.SaveChangesAsync(cancellationToken);
@@ -123,6 +120,21 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
             return Result.Success();
         }
 
+        // ---- 2. Only approved invoices may be posted (acceptance criterion 12) --------------------
+        if (!InvoiceWorkflow.SyncEligible.Contains(invoice.WorkflowState))
+        {
+            return Result.Failure(
+                nameof(SyncErrorCategory.Permanent),
+                $"Invoice {invoiceId} is in state {invoice.WorkflowState}, which is not eligible for synchronisation. " +
+                "Only an approved invoice may be sent to Bexio.");
+        }
+
+        if (invoice.ApprovalStatus != ApprovalStatus.Approved)
+        {
+            return Result.Failure(nameof(SyncErrorCategory.Permanent), $"Invoice {invoiceId} has not been approved.");
+        }
+
+        // ---- 3. Mark in flight -----------------------------------------------------------------
         if (invoice.WorkflowState == InvoiceWorkflowState.QueuedForBexio)
         {
             invoice.TransitionTo(InvoiceWorkflowState.Syncing);
@@ -131,7 +143,7 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
             await _audit.WriteAsync(AuditActions.InvoiceSyncStarted, nameof(Invoice), invoice.Id, cancellationToken: cancellationToken);
         }
 
-        // ---- 3. Preflight, again --------------------------------------------------------------------
+        // ---- 4. Preflight, again --------------------------------------------------------------------
         var assessments = await _db.TaxAssessments.Where(a => a.InvoiceId == invoice.Id).ToListAsync(cancellationToken);
         var lines = invoice.Lines.OrderBy(l => l.LineNumber).ToList();
 
@@ -145,7 +157,7 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
             return Result.Failure(nameof(SyncErrorCategory.Validation), $"Pre-flight checks failed: {reasons}");
         }
 
-        // ---- 4. The approval must still describe this invoice ---------------------------------------
+        // ---- 5. The approval must still describe this invoice ---------------------------------------
         var approval = await _db.Approvals
             .Where(a => a.EntityId == invoice.Id && a.Decision == ApprovalDecision.Approved)
             .OrderByDescending(a => a.ApprovedAt)
@@ -165,16 +177,23 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
                 "The invoice has changed since it was approved, so the approval no longer covers what would be " +
                 "posted. It must be reviewed and approved again.";
 
+            // FailAsync has already moved the invoice out of Syncing into its failure state; from there
+            // it is returned to review so the change can be looked at and re-approved. Re-asserting the
+            // failure state here would be an illegal self-transition.
             await FailAsync(invoice, idempotencyKey, SyncErrorCategory.Permanent, "APPROVAL_STALE", message, correlationId, cancellationToken);
-            invoice.TransitionTo(InvoiceWorkflowState.SyncFailed);
-            invoice.TransitionTo(InvoiceWorkflowState.NeedsReview);
+
+            if (InvoiceWorkflow.CanTransition(invoice.WorkflowState, InvoiceWorkflowState.NeedsReview))
+            {
+                invoice.TransitionTo(InvoiceWorkflowState.NeedsReview);
+            }
+
             invoice.ApprovalStatus = ApprovalStatus.NotSubmitted;
             await _db.SaveChangesAsync(cancellationToken);
 
             return Result.Failure(nameof(SyncErrorCategory.Permanent), message);
         }
 
-        // ---- 5. Build the request and reserve the key BEFORE calling Bexio ---------------------------
+        // ---- 6. Build the request and reserve the key BEFORE calling Bexio ---------------------------
         var request = new BexioInvoiceRequest(
             ContactId: preview.BexioContactId!,
             InvoiceDate: invoice.InvoiceDate ?? DateOnly.FromDateTime(_clock.UtcNow.UtcDateTime),
@@ -226,7 +245,7 @@ public sealed class InvoiceSynchronizationService : IInvoiceSynchronizationServi
             return Result.Failure(nameof(SyncErrorCategory.Conflict), "Another worker is already synchronising this invoice.");
         }
 
-        // ---- 6. Call Bexio ----------------------------------------------------------------------------
+        // ---- 7. Call Bexio ----------------------------------------------------------------------------
         try
         {
             var result = await _bexio.CreateInvoiceAsync(request, idempotencyKey, cancellationToken);

@@ -56,8 +56,12 @@ public static class InvoiceWorkflow
                 // a transient failure returns the message to the queue for another attempt
                 InvoiceWorkflowState.QueuedForBexio),
 
-            // Terminal success. Nothing may leave it: a synced invoice is never re-posted.
-            [InvoiceWorkflowState.Synced] = Set(),
+            // Terminal for posting purposes: a synced invoice can never return to a sync-eligible
+            // state, which is what stops it being posted twice. Reconciliation is the one exception —
+            // discovering that Bexio no longer agrees with us must be recordable, and a record stuck in
+            // Synced while the two sides disagree is worse than one flagged for a human. Note that
+            // ReconciliationRequired is itself not sync-eligible, so this opens no path back to posting.
+            [InvoiceWorkflowState.Synced] = Set(InvoiceWorkflowState.ReconciliationRequired),
 
             [InvoiceWorkflowState.ExtractionFailed] = Set(InvoiceWorkflowState.Imported, InvoiceWorkflowState.NeedsReview),
             [InvoiceWorkflowState.ValidationFailed] = Set(InvoiceWorkflowState.NeedsReview, InvoiceWorkflowState.Extracted),
