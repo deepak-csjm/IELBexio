@@ -238,18 +238,12 @@ public sealed class InvoiceValidatorTests
     }
 
     [Fact]
-    public void Header_shipping_is_counted_once_when_there_is_no_shipping_line()
+    public void Shipping_carried_only_in_the_header_does_not_need_a_matching_line()
     {
+        // Some sources report shipping as a header amount and never itemise it. That must validate.
         var (invoice, lines) = ReferenceInvoice();
         invoice.ShippingAmount = 20m;
         invoice.TotalAmount = 1101m;
-        lines.Add(new InvoiceLine
-        {
-            TenantId = invoice.TenantId, InvoiceId = invoice.Id, LineNumber = 2,
-            Description = "Rounding", Kind = LineKind.Rounding,
-            Quantity = 1m, UnitPrice = 20m, NetAmount = 20m,
-            TaxRatePercent = 0m, TaxAmount = 0m, GrossAmount = 20m, Currency = "CHF",
-        });
 
         var report = CreateValidator().Validate(invoice, lines);
 
@@ -257,8 +251,33 @@ public sealed class InvoiceValidatorTests
     }
 
     [Fact]
-    public void Shipping_carried_as_a_line_is_not_double_counted_against_the_header()
+    public void Shipping_lines_that_disagree_with_the_header_shipping_amount_are_caught()
     {
+        // This is the double-counting bug the separate reconciliation exists to catch.
+        var (invoice, lines) = ReferenceInvoice();
+        invoice.ShippingAmount = 20m;
+        invoice.TotalAmount = 1101m;
+        lines.Add(new InvoiceLine
+        {
+            TenantId = invoice.TenantId, InvoiceId = invoice.Id, LineNumber = 2,
+            Description = "Shipping", Kind = LineKind.Shipping,
+            Quantity = 1m, UnitPrice = 35m, NetAmount = 35m,
+            TaxRatePercent = 0m, TaxAmount = 0m, GrossAmount = 35m, Currency = "CHF",
+        });
+
+        var report = CreateValidator().Validate(invoice, lines);
+
+        report.Contains(ValidationCodes.LineTotalsDoNotMatchHeader).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Shipping_carried_as_a_line_reconciles_against_the_header_shipping_amount()
+    {
+        // Convention, fixed by the §21 identity (subtotal + tax + shipping − discount = total):
+        // the header subtotal covers goods only and never includes shipping. An earlier version of
+        // this test encoded a subtotal that also contained the shipping charge, which balanced the
+        // total by luck while double-counting 20 CHF of net revenue. The separate product/shipping
+        // reconciliation now catches exactly that.
         var tenantId = Guid.CreateVersion7();
         var customer = new Customer { TenantId = tenantId, CompanyName = "ABC Swiss GmbH", CountryCode = "CH", VatNumber = "CHE-116.281.710" };
         var invoice = new Invoice
@@ -266,7 +285,7 @@ public sealed class InvoiceValidatorTests
             TenantId = tenantId, SourceSystem = SourceSystem.Shopify, SourceDocumentId = "o-2",
             InvoiceNumber = "INV-2", InvoiceDate = new DateOnly(2026, 3, 1), Currency = "CHF",
             CustomerId = customer.Id, Customer = customer,
-            SubtotalAmount = 1020m, ShippingAmount = 20m, TaxAmount = 82.62m, TotalAmount = 1122.62m,
+            SubtotalAmount = 1000m, ShippingAmount = 20m, TaxAmount = 82.62m, TotalAmount = 1102.62m,
         };
         invoice.BillingAddress.CountryCode = "CH";
 

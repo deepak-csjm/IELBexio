@@ -1,0 +1,250 @@
+{
+  "id": "gid://shopify/Order/10002",
+  "name": "INV-10002",
+  "updatedAt": "2026-03-02T10:00:00Z",
+  "createdAt": "2026-03-02T10:00:00Z",
+  "processedAt": "2026-03-02T10:00:00Z",
+  "currencyCode": "CHF",
+  "displayFinancialStatus": "PAID",
+  "test": false,
+  "customer": {
+    "id": "gid://shopify/Customer/5002",
+    "firstName": "Marc",
+    "lastName": "Weber",
+    "email": "invoices@helvetia-retail.example",
+    "phone": "+41 41 000 00 02"
+  },
+  "billingAddress": {
+    "company": "Helvetia Retail AG",
+    "address1": "Seestrasse 40",
+    "address2": null,
+    "zip": "6300",
+    "city": "Zug",
+    "province": "Zug",
+    "countryCodeV2": "CH"
+  },
+  "shippingAddress": {
+    "company": "Helvetia Retail AG",
+    "address1": "Seestrasse 40",
+    "address2": null,
+    "zip": "6300",
+    "city": "Zug",
+    "province": "Zug",
+    "countryCodeV2": "CH"
+  },
+  "localizationExtensions": {
+    "edges": [
+      {
+        "node": {
+          "key": "TAX_CREDENTIAL_CH",
+          "value": "CHE-105.980.910"
+        }
+      }
+    ]
+  },
+  "subtotalPriceSet": {
+    "shopMoney": {
+      "amount": "2450.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalDiscountsSet": {
+    "shopMoney": {
+      "amount": "100.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalShippingPriceSet": {
+    "shopMoney": {
+      "amount": "50.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalTaxSet": {
+    "shopMoney": {
+      "amount": "165.75",
+      "currencyCode": "CHF"
+    }
+  },
+  "currentTotalPriceSet": {
+    "shopMoney": {
+      "amount": "2565.75",
+      "currencyCode": "CHF"
+    }
+  },
+  "shippingLine": {
+    "title": "Standard delivery",
+    "originalPriceSet": {
+      "shopMoney": {
+        "amount": "50.00",
+        "currencyCode": "CHF"
+      }
+    },
+    "taxLines": [
+      {
+        "title": "MWST",
+        "rate": 0.081,
+        "ratePercentage": 8.1,
+        "priceSet": {
+          "shopMoney": {
+            "amount": "4.05",
+            "currencyCode": "CHF"
+          }
+        }
+      }
+    ]
+  },
+  "lineItems": {
+    "edges": [
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90011",
+          "name": "Alpha Widget",
+          "quantity": 8,
+          "sku": "SKU-ALPHA",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90011",
+            "sku": "SKU-ALPHA"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "250.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "1900.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "100.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.081,
+              "ratePercentage": 8.1,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "153.90",
+                  "currencyCode": "CHF"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90012",
+          "name": "Printed Manual",
+          "quantity": 6,
+          "sku": "SKU-BOOK",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90012",
+            "sku": "SKU-BOOK"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "50.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "300.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "0.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.026000000000000002,
+              "ratePercentage": 2.6,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "7.80",
+                  "currencyCode": "CHF"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90013",
+          "name": "Export Sample (zero-rated)",
+          "quantity": 1,
+          "sku": "SKU-ZERO",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90013",
+            "sku": "SKU-ZERO"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "150.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "150.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "0.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.0,
+              "ratePercentage": 0.0,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "0.00",
+                  "currencyCode": "CHF"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "id": "gid://shopify/OrderTransaction/60002",
+      "kind": "SALE",
+      "status": "SUCCESS",
+      "gateway": "credit_card",
+      "processedAt": "2026-03-02T10:05:00Z",
+      "amountSet": {
+        "shopMoney": {
+          "amount": "2565.75",
+          "currencyCode": "CHF"
+        }
+      }
+    }
+  ],
+  "_fixture": {
+    "description": "Mixed-rate Swiss invoice: 8.1% goods, 2.6% printed matter, a zero-rated item, an order-level discount and a taxed shipping line.",
+    "shape": "Shopify Admin GraphQL Order node (unverified against shopify.dev - egress blocked).",
+    "apiVersion": "2025-10"
+  }
+}

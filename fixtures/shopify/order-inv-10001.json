@@ -1,0 +1,80 @@
+{
+  "_fixture": {
+    "description": "Specification §31 reference order: ABC Swiss GmbH, INV-10001, CHF, net 1000, VAT 8.1% = 81, total 1081.",
+    "shape": "Shopify Admin GraphQL Order node. Field names follow the Admin GraphQL Order object; NOT verified against shopify.dev, which is blocked by this environment's egress policy.",
+    "apiVersion": "2025-10"
+  },
+  "id": "gid://shopify/Order/10001",
+  "name": "INV-10001",
+  "updatedAt": "2026-03-01T09:15:00Z",
+  "createdAt": "2026-03-01T09:12:00Z",
+  "processedAt": "2026-03-01T09:12:00Z",
+  "currencyCode": "CHF",
+  "displayFinancialStatus": "PAID",
+  "test": false,
+  "customer": {
+    "id": "gid://shopify/Customer/5001",
+    "firstName": "Andrea",
+    "lastName": "Brunner",
+    "email": "buchhaltung@abc-swiss.example",
+    "phone": "+41 44 000 00 01"
+  },
+  "billingAddress": {
+    "company": "ABC Swiss GmbH",
+    "address1": "Bahnhofstrasse 1",
+    "address2": null,
+    "zip": "8001",
+    "city": "Zürich",
+    "province": "Zürich",
+    "countryCodeV2": "CH"
+  },
+  "shippingAddress": {
+    "company": "ABC Swiss GmbH",
+    "address1": "Bahnhofstrasse 1",
+    "address2": null,
+    "zip": "8001",
+    "city": "Zürich",
+    "province": "Zürich",
+    "countryCodeV2": "CH"
+  },
+  "localizationExtensions": {
+    "edges": [
+      { "node": { "key": "TAX_CREDENTIAL_CH", "value": "CHE-116.281.710" } }
+    ]
+  },
+  "subtotalPriceSet": { "shopMoney": { "amount": "1000.00", "currencyCode": "CHF" } },
+  "totalDiscountsSet": { "shopMoney": { "amount": "0.00", "currencyCode": "CHF" } },
+  "totalShippingPriceSet": { "shopMoney": { "amount": "0.00", "currencyCode": "CHF" } },
+  "totalTaxSet": { "shopMoney": { "amount": "81.00", "currencyCode": "CHF" } },
+  "currentTotalPriceSet": { "shopMoney": { "amount": "1081.00", "currencyCode": "CHF" } },
+  "shippingLine": null,
+  "lineItems": {
+    "edges": [
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90001",
+          "name": "Alpha Widget",
+          "quantity": 4,
+          "sku": "SKU-ALPHA",
+          "variant": { "id": "gid://shopify/ProductVariant/70001", "sku": "SKU-ALPHA" },
+          "originalUnitPriceSet": { "shopMoney": { "amount": "250.00", "currencyCode": "CHF" } },
+          "discountedTotalSet": { "shopMoney": { "amount": "1000.00", "currencyCode": "CHF" } },
+          "totalDiscountSet": { "shopMoney": { "amount": "0.00", "currencyCode": "CHF" } },
+          "taxLines": [
+            { "title": "MWST", "rate": 0.081, "ratePercentage": 8.1, "priceSet": { "shopMoney": { "amount": "81.00", "currencyCode": "CHF" } } }
+          ]
+        }
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "id": "gid://shopify/OrderTransaction/60001",
+      "kind": "SALE",
+      "status": "SUCCESS",
+      "gateway": "bank_transfer",
+      "processedAt": "2026-03-01T09:14:00Z",
+      "amountSet": { "shopMoney": { "amount": "1081.00", "currencyCode": "CHF" } }
+    }
+  ]
+}

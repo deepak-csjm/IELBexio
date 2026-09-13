@@ -1,0 +1,143 @@
+{
+  "id": "gid://shopify/Order/10006",
+  "name": "INV-10006",
+  "updatedAt": "2026-03-06T14:00:00Z",
+  "createdAt": "2026-03-06T14:00:00Z",
+  "processedAt": "2026-03-06T14:00:00Z",
+  "currencyCode": "CHF",
+  "displayFinancialStatus": "REFUNDED",
+  "test": false,
+  "customer": {
+    "id": "gid://shopify/Customer/5001",
+    "firstName": "Andrea",
+    "lastName": "Brunner",
+    "email": "buchhaltung@abc-swiss.example",
+    "phone": "+41 44 000 00 01"
+  },
+  "billingAddress": {
+    "company": "ABC Swiss GmbH",
+    "address1": "Bahnhofstrasse 1",
+    "address2": null,
+    "zip": "8001",
+    "city": "Zürich",
+    "province": "Zürich",
+    "countryCodeV2": "CH"
+  },
+  "shippingAddress": {
+    "company": "ABC Swiss GmbH",
+    "address1": "Bahnhofstrasse 1",
+    "address2": null,
+    "zip": "8001",
+    "city": "Zürich",
+    "province": "Zürich",
+    "countryCodeV2": "CH"
+  },
+  "localizationExtensions": {
+    "edges": [
+      {
+        "node": {
+          "key": "TAX_CREDENTIAL_CH",
+          "value": "CHE-116.281.710"
+        }
+      }
+    ]
+  },
+  "subtotalPriceSet": {
+    "shopMoney": {
+      "amount": "-250.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalDiscountsSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalShippingPriceSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalTaxSet": {
+    "shopMoney": {
+      "amount": "-20.25",
+      "currencyCode": "CHF"
+    }
+  },
+  "currentTotalPriceSet": {
+    "shopMoney": {
+      "amount": "-270.25",
+      "currencyCode": "CHF"
+    }
+  },
+  "shippingLine": null,
+  "lineItems": {
+    "edges": [
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90051",
+          "name": "Alpha Widget (returned)",
+          "quantity": 1,
+          "sku": "SKU-ALPHA",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90051",
+            "sku": "SKU-ALPHA"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "-250.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "-250.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "0.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.081,
+              "ratePercentage": 8.1,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "-20.25",
+                  "currencyCode": "CHF"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "id": "gid://shopify/OrderTransaction/60006",
+      "kind": "REFUND",
+      "status": "SUCCESS",
+      "gateway": "credit_card",
+      "processedAt": "2026-03-06T14:10:00Z",
+      "amountSet": {
+        "shopMoney": {
+          "amount": "270.25",
+          "currencyCode": "CHF"
+        }
+      }
+    }
+  ],
+  "_fixture": {
+    "description": "Fully refunded order, normalising to a credit note with negative amounts.",
+    "shape": "Shopify Admin GraphQL Order node (unverified).",
+    "apiVersion": "2025-10"
+  }
+}

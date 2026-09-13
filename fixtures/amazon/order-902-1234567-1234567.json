@@ -1,0 +1,66 @@
+{
+  "_fixture": {
+    "description": "Amazon SP-API Orders order + order items, marketplace AMAZON.DE. Buyer PII is deliberately absent to model the common real case (see docs/amazon-integration.md).",
+    "shape": "Composite of getOrder (Orders v0) and getOrderItems responses. NOT verified against developer-docs.amazon.com, which is blocked by this environment's egress policy.",
+    "apiVersion": "orders/v0",
+    "restrictions": [
+      "BuyerInfo requires a Restricted Data Token (Tokens API) and an approved PII data-access role; without it the buyer name and address are absent or masked.",
+      "Amazon does not expose a per-line tax breakdown equivalent to Shopify taxLines on getOrderItems for all marketplaces; tax detail generally requires the Finances API or a settlement report."
+    ]
+  },
+  "order": {
+    "AmazonOrderId": "902-1234567-1234567",
+    "PurchaseDate": "2026-03-08T08:30:00Z",
+    "LastUpdateDate": "2026-03-08T09:00:00Z",
+    "OrderStatus": "Shipped",
+    "FulfillmentChannel": "AFN",
+    "SalesChannel": "Amazon.de",
+    "MarketplaceId": "A1PA6795UKMFR9",
+    "OrderType": "StandardOrder",
+    "PaymentMethod": "Other",
+    "IsBusinessOrder": true,
+    "IsPrime": false,
+    "NumberOfItemsShipped": 3,
+    "NumberOfItemsUnshipped": 0,
+    "OrderTotal": { "CurrencyCode": "EUR", "Amount": "297.50" },
+    "ShippingAddress": {
+      "City": "Berlin",
+      "PostalCode": "10117",
+      "CountryCode": "DE",
+      "StateOrRegion": "Berlin"
+    },
+    "BuyerInfo": {
+      "BuyerEmail": null,
+      "BuyerName": null,
+      "BuyerTaxInfo": null
+    }
+  },
+  "orderItems": [
+    {
+      "ASIN": "B0TESTALPHA",
+      "SellerSKU": "SKU-ALPHA",
+      "OrderItemId": "12345678901234",
+      "Title": "Alpha Widget",
+      "QuantityOrdered": 1,
+      "QuantityShipped": 1,
+      "ItemPrice": { "CurrencyCode": "EUR", "Amount": "210.08" },
+      "ItemTax": { "CurrencyCode": "EUR", "Amount": "39.92" },
+      "ShippingPrice": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "ShippingTax": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "PromotionDiscount": { "CurrencyCode": "EUR", "Amount": "0.00" }
+    },
+    {
+      "ASIN": "B0TESTBOOK",
+      "SellerSKU": "SKU-BOOK",
+      "OrderItemId": "12345678901235",
+      "Title": "Printed Manual",
+      "QuantityOrdered": 2,
+      "QuantityShipped": 2,
+      "ItemPrice": { "CurrencyCode": "EUR", "Amount": "44.86" },
+      "ItemTax": { "CurrencyCode": "EUR", "Amount": "2.64" },
+      "ShippingPrice": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "ShippingTax": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "PromotionDiscount": { "CurrencyCode": "EUR", "Amount": "0.00" }
+    }
+  ]
+}

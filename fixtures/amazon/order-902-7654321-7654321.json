@@ -1,0 +1,51 @@
+{
+  "_fixture": {
+    "description": "Amazon SP-API order WITH buyer information present, modelling a seller whose application holds an approved PII data-access role. Used to prove the connector handles both cases.",
+    "shape": "Composite of getOrder (Orders v0) and getOrderItems responses. NOT verified against official Amazon documentation (egress blocked).",
+    "apiVersion": "orders/v0"
+  },
+  "order": {
+    "AmazonOrderId": "902-7654321-7654321",
+    "PurchaseDate": "2026-03-09T14:00:00Z",
+    "LastUpdateDate": "2026-03-09T15:30:00Z",
+    "OrderStatus": "Shipped",
+    "FulfillmentChannel": "MFN",
+    "SalesChannel": "Amazon.de",
+    "MarketplaceId": "A1PA6795UKMFR9",
+    "OrderType": "StandardOrder",
+    "PaymentMethod": "Other",
+    "IsBusinessOrder": true,
+    "IsPrime": false,
+    "NumberOfItemsShipped": 1,
+    "NumberOfItemsUnshipped": 0,
+    "OrderTotal": { "CurrencyCode": "EUR", "Amount": "119.00" },
+    "ShippingAddress": {
+      "Name": "Sofia Keller",
+      "AddressLine1": "Marktplatz 8",
+      "City": "München",
+      "PostalCode": "80331",
+      "CountryCode": "DE",
+      "StateOrRegion": "Bayern"
+    },
+    "BuyerInfo": {
+      "BuyerEmail": "sofia.keller@buyer.example",
+      "BuyerName": "Sofia Keller",
+      "BuyerTaxInfo": { "CompanyLegalName": "Keller Handel e.K.", "TaxingRegion": "DE" }
+    }
+  },
+  "orderItems": [
+    {
+      "ASIN": "B0TESTBETA",
+      "SellerSKU": "SKU-BETA",
+      "OrderItemId": "22345678901234",
+      "Title": "Beta Service",
+      "QuantityOrdered": 1,
+      "QuantityShipped": 1,
+      "ItemPrice": { "CurrencyCode": "EUR", "Amount": "100.00" },
+      "ItemTax": { "CurrencyCode": "EUR", "Amount": "19.00" },
+      "ShippingPrice": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "ShippingTax": { "CurrencyCode": "EUR", "Amount": "0.00" },
+      "PromotionDiscount": { "CurrencyCode": "EUR", "Amount": "0.00" }
+    }
+  ]
+}

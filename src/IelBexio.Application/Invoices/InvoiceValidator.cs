@@ -186,25 +186,41 @@ public sealed class InvoiceValidator
             return;
         }
 
-        // Shipping may be carried either as a dedicated line or as a header amount. Accept both, but
-        // never count it twice: header shipping is only added when no shipping line exists.
+        // Product net and shipping net are reconciled separately rather than as one lump sum.
+        // Source systems disagree about where shipping lives: Shopify carries it as a header amount
+        // that this system also materialises as a line, while other sources put it only in the header.
+        // Comparing a combined line total against a header subtotal that excludes shipping produces a
+        // false failure on exactly the invoices most worth trusting, so each is checked against its own
+        // counterpart.
         var shippingLines = lines.Where(l => l.Kind == LineKind.Shipping).ToList();
-        var lineNetTotal = lines.Sum(l => l.NetAmount);
-        var lineTaxTotal = lines.Sum(l => l.TaxAmount);
+        var productNetTotal = lines.Where(l => l.Kind != LineKind.Shipping).Sum(l => l.NetAmount);
+        var expectedProductNet = invoice.SubtotalAmount - invoice.DiscountAmount;
 
-        var expectedNetFromHeader = invoice.SubtotalAmount - invoice.DiscountAmount
-            + (shippingLines.Count > 0 ? 0m : invoice.ShippingAmount);
-
-        if (Math.Abs(lineNetTotal - expectedNetFromHeader) > _tolerances.TotalsTolerance)
+        if (Math.Abs(productNetTotal - expectedProductNet) > _tolerances.TotalsTolerance)
         {
             report.Error(
                 ValidationCodes.LineTotalsDoNotMatchHeader,
-                $"Sum of line net amounts ({lineNetTotal}) does not match the header net " +
-                $"(subtotal {invoice.SubtotalAmount} − discount {invoice.DiscountAmount}" +
-                (shippingLines.Count > 0 ? "" : $" + shipping {invoice.ShippingAmount}") + $" = {expectedNetFromHeader}).",
+                $"Sum of non-shipping line net amounts ({productNetTotal}) does not match the header net " +
+                $"(subtotal {invoice.SubtotalAmount} − discount {invoice.DiscountAmount} = {expectedProductNet}).",
                 nameof(Invoice.SubtotalAmount));
         }
 
+        // When shipping is materialised as lines, those lines must agree with the header shipping
+        // amount. A disagreement means shipping is being counted twice or not at all.
+        if (shippingLines.Count > 0)
+        {
+            var shippingNetTotal = shippingLines.Sum(l => l.NetAmount);
+            if (Math.Abs(shippingNetTotal - invoice.ShippingAmount) > _tolerances.TotalsTolerance)
+            {
+                report.Error(
+                    ValidationCodes.LineTotalsDoNotMatchHeader,
+                    $"Sum of shipping line net amounts ({shippingNetTotal}) does not match the header shipping " +
+                    $"amount ({invoice.ShippingAmount}).",
+                    nameof(Invoice.ShippingAmount));
+            }
+        }
+
+        var lineTaxTotal = lines.Sum(l => l.TaxAmount);
         if (Math.Abs(lineTaxTotal - invoice.TaxAmount) > _tolerances.TotalsTolerance)
         {
             report.Error(

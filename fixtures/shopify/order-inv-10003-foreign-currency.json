@@ -1,0 +1,129 @@
+{
+  "id": "gid://shopify/Order/10003",
+  "name": "INV-10003",
+  "updatedAt": "2026-03-03T11:00:00Z",
+  "createdAt": "2026-03-03T11:00:00Z",
+  "processedAt": "2026-03-03T11:00:00Z",
+  "currencyCode": "EUR",
+  "displayFinancialStatus": "PENDING",
+  "test": false,
+  "customer": {
+    "id": "gid://shopify/Customer/5003",
+    "firstName": "Lena",
+    "lastName": "Schmidt",
+    "email": "rechnung@nordwind-gmbh.example",
+    "phone": "+49 30 000 0003"
+  },
+  "billingAddress": {
+    "company": "Nordwind GmbH",
+    "address1": "Friedrichstrasse 12",
+    "address2": null,
+    "zip": "10117",
+    "city": "Berlin",
+    "province": "Berlin",
+    "countryCodeV2": "DE"
+  },
+  "shippingAddress": {
+    "company": "Nordwind GmbH",
+    "address1": "Friedrichstrasse 12",
+    "address2": null,
+    "zip": "10117",
+    "city": "Berlin",
+    "province": "Berlin",
+    "countryCodeV2": "DE"
+  },
+  "localizationExtensions": {
+    "edges": [
+      {
+        "node": {
+          "key": "TAX_CREDENTIAL_DE",
+          "value": "DE811907980"
+        }
+      }
+    ]
+  },
+  "subtotalPriceSet": {
+    "shopMoney": {
+      "amount": "480.00",
+      "currencyCode": "EUR"
+    }
+  },
+  "totalDiscountsSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "EUR"
+    }
+  },
+  "totalShippingPriceSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "EUR"
+    }
+  },
+  "totalTaxSet": {
+    "shopMoney": {
+      "amount": "91.20",
+      "currencyCode": "EUR"
+    }
+  },
+  "currentTotalPriceSet": {
+    "shopMoney": {
+      "amount": "571.20",
+      "currencyCode": "EUR"
+    }
+  },
+  "shippingLine": null,
+  "lineItems": {
+    "edges": [
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90021",
+          "name": "Alpha Widget",
+          "quantity": 2,
+          "sku": "SKU-ALPHA",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90021",
+            "sku": "SKU-ALPHA"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "240.00",
+              "currencyCode": "EUR"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "480.00",
+              "currencyCode": "EUR"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "0.00",
+              "currencyCode": "EUR"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.19,
+              "ratePercentage": 19.0,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "91.20",
+                  "currencyCode": "EUR"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "transactions": [],
+  "_fixture": {
+    "description": "Foreign-currency (EUR) order billed to a German customer - exercises the currency path and a non-CH tax rate the Swiss rule table deliberately cannot classify.",
+    "shape": "Shopify Admin GraphQL Order node (unverified).",
+    "apiVersion": "2025-10"
+  }
+}

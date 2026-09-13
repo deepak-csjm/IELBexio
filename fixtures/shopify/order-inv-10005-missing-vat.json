@@ -1,0 +1,123 @@
+{
+  "id": "gid://shopify/Order/10005",
+  "name": "INV-10005",
+  "updatedAt": "2026-03-05T13:00:00Z",
+  "createdAt": "2026-03-05T13:00:00Z",
+  "processedAt": "2026-03-05T13:00:00Z",
+  "currencyCode": "CHF",
+  "displayFinancialStatus": "PAID",
+  "test": false,
+  "customer": {
+    "id": "gid://shopify/Customer/5005",
+    "firstName": null,
+    "lastName": null,
+    "email": "compta@alpine-traders.example",
+    "phone": null
+  },
+  "billingAddress": {
+    "company": "Alpine Traders",
+    "address1": "Rue du Rhône 12",
+    "address2": null,
+    "zip": "1204",
+    "city": "Genève",
+    "province": "Genève",
+    "countryCodeV2": "CH"
+  },
+  "shippingAddress": {
+    "company": "Alpine Traders",
+    "address1": "Rue du Rhône 12",
+    "address2": null,
+    "zip": "1204",
+    "city": "Genève",
+    "province": "Genève",
+    "countryCodeV2": "CH"
+  },
+  "localizationExtensions": {
+    "edges": []
+  },
+  "subtotalPriceSet": {
+    "shopMoney": {
+      "amount": "500.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalDiscountsSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalShippingPriceSet": {
+    "shopMoney": {
+      "amount": "0.00",
+      "currencyCode": "CHF"
+    }
+  },
+  "totalTaxSet": {
+    "shopMoney": {
+      "amount": "40.50",
+      "currencyCode": "CHF"
+    }
+  },
+  "currentTotalPriceSet": {
+    "shopMoney": {
+      "amount": "540.50",
+      "currencyCode": "CHF"
+    }
+  },
+  "shippingLine": null,
+  "lineItems": {
+    "edges": [
+      {
+        "node": {
+          "id": "gid://shopify/LineItem/90041",
+          "name": "Beta Service",
+          "quantity": 1,
+          "sku": "SKU-BETA",
+          "variant": {
+            "id": "gid://shopify/ProductVariant/90041",
+            "sku": "SKU-BETA"
+          },
+          "originalUnitPriceSet": {
+            "shopMoney": {
+              "amount": "500.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "discountedTotalSet": {
+            "shopMoney": {
+              "amount": "500.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "totalDiscountSet": {
+            "shopMoney": {
+              "amount": "0.00",
+              "currencyCode": "CHF"
+            }
+          },
+          "taxLines": [
+            {
+              "title": "MWST",
+              "rate": 0.081,
+              "ratePercentage": 8.1,
+              "priceSet": {
+                "shopMoney": {
+                  "amount": "40.50",
+                  "currencyCode": "CHF"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "transactions": [],
+  "_fixture": {
+    "description": "Company customer with no VAT/UID number and a name that matches more than one Bexio contact - exercises the ambiguous-customer and missing-VAT review paths.",
+    "shape": "Shopify Admin GraphQL Order node (unverified).",
+    "apiVersion": "2025-10",
+    "expectedOutcome": "WARNINGS: VAT_NUMBER_MISSING, routed to NEEDS_REVIEW"
+  }
+}
