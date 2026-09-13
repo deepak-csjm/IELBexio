@@ -1,6 +1,8 @@
 # Implementation Plan — Bexio Intelligent Invoice Integration POC
 
-Status: **living document**. Written at Phase 1, updated as phases complete.
+Status: **complete**. Written at Phase 1 and updated as each phase landed.
+All ten phases are implemented, tested and verified — see
+[`final-poc-report.md`](final-poc-report.md) for what was verified by execution and what was not.
 Authoritative specification: `Claude_Code_Bexio_Invoice_Ingestion_POC_Instructions.md` (supplied by the product owner).
 
 ---
@@ -182,16 +184,18 @@ None are required to run, test, or demo the POC. All are required only for live 
 
 Executed in this order, with `dotnet build` + `dotnet test` + a commit at each phase boundary (spec §38).
 
-1. Repo assessment, environment, plan, solution skeleton — *this document*
-2. Domain model + EF Core + PostgreSQL migrations
-3. Bexio abstraction + mock + OAuth API client + error classification
-4. Source connectors (Shopify, Amazon) + fixtures
-5. Document ingestion + deterministic validation + tax determination + mappings
-6. AI gateway + controls + injection defence
-7. Workflow state machine + approval + outbox + sync worker + preflight + reconciliation
-8. REST API + OpenAPI + Blazor review UI
-9. Tests: unit, integration, negative (§32), E2E happy path (§31)
-10. Docker, compose, demo scripts, CI, documentation, final report
+| # | Phase | Status |
+|---|---|---|
+| 1 | Repo assessment, environment, plan, solution skeleton | ✅ complete |
+| 2 | Domain model + EF Core + PostgreSQL migrations | ✅ complete |
+| 3 | Bexio abstraction + mock + OAuth API client + error classification | ✅ complete |
+| 4 | Source connectors (Shopify, Amazon) + fixtures | ✅ complete |
+| 5 | Document ingestion + deterministic validation + tax determination + mappings | ✅ complete |
+| 6 | AI gateway + controls + injection defence | ✅ complete |
+| 7 | Workflow state machine + approval + outbox + sync worker + preflight + reconciliation | ✅ complete |
+| 8 | REST API + OpenAPI + Blazor review UI | ✅ complete |
+| 9 | Tests: unit, integration, negative (§32), E2E happy path (§31) | ✅ complete — 221 passing |
+| 10 | Docker, compose, demo scripts, CI, documentation, final report | ✅ complete |
 
 ## 11. Acceptance criteria → how each is demonstrated
 
