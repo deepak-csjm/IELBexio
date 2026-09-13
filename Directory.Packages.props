@@ -23,7 +23,7 @@
   <ItemGroup Label="Azure (optional live modes)">
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.25.1" />
-    <PackageVersion Include="Azure.Identity" Version="1.18.1" />
+    <PackageVersion Include="Azure.Identity" Version="1.19.0" />
   </ItemGroup>
   <ItemGroup Label="Testing">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
