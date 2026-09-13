@@ -1,0 +1,15 @@
+# Keep the build context small and free of anything that must never enter an image.
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.idea/
+tests/
+docs/
+local-blobs/
+TestResults/
+*.md
+.env
+.env.*
+!.env.example

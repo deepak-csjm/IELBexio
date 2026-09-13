@@ -1,0 +1,214 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; jobs that need more request it explicitly.
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: Build, analyse and test
+    runs-on: ubuntu-latest
+
+    services:
+      # A real PostgreSQL. These tests verify unique constraints, numeric arithmetic, transactions and
+      # SELECT ... FOR UPDATE SKIP LOCKED — none of which an in-memory provider can honestly exercise.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warnings are errors across the solution, so this step is the analyser gate: a new analyser
+      # finding fails the build rather than accumulating quietly.
+      - name: Build (warnings as errors, analysers enabled)
+        run: dotnet build --no-restore -c Release
+
+      - name: Unit tests
+        run: dotnet test tests/IelBexio.UnitTests/IelBexio.UnitTests.csproj --no-build -c Release --logger "trx;LogFileName=unit.trx" --results-directory TestResults
+
+      - name: Integration and end-to-end tests
+        env:
+          IELBEXIO_TEST_POSTGRES: "Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres"
+        run: dotnet test tests/IelBexio.IntegrationTests/IelBexio.IntegrationTests.csproj --no-build -c Release --logger "trx;LogFileName=integration.trx" --results-directory TestResults
+
+      - name: Verify migrations apply to an empty database
+        env:
+          IELBEXIO_DESIGN_CONNECTION: "Host=127.0.0.1;Port=5432;Database=ielbexio_migrationcheck;Username=postgres;Password=postgres"
+        run: |
+          PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE ielbexio_migrationcheck;"
+          dotnet tool install --global dotnet-ef --version 10.*
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef database update \
+            --project src/IelBexio.Infrastructure \
+            --startup-project src/IelBexio.Infrastructure
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan can inspect what was actually committed, not just the tip.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Fails the build on any package with a known vulnerability, transitive ones included.
+      - name: Vulnerable and deprecated packages
+        run: |
+          dotnet restore
+          echo "--- vulnerable ---"
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -qiE '(Critical|High|Moderate|Low)$' vulnerable.txt; then
+            echo "::error::A dependency with a known vulnerability is present."
+            exit 1
+          fi
+          echo "--- deprecated ---"
+          dotnet list package --deprecated 2>&1 | tee deprecated.txt
+
+      # A targeted check for the specific mistake this repository must never make: a real credential
+      # committed to source. Broad scanners are valuable too, but this one is precise and fast.
+      - name: No committed secrets
+        run: |
+          set -euo pipefail
+          status=0
+
+          # Placeholders in .env.example and documentation are expected; real values are not.
+          candidates=$(git ls-files -- '*.json' '*.cs' '*.razor' '*.yml' '*.yaml' '*.props' '*.sh' '*.ps1' \
+            | grep -v -E '(^\.env\.example$|^docs/|fixtures/)' || true)
+
+          if [ -n "$candidates" ]; then
+            # Bexio/Shopify/Amazon/Azure token shapes and anything that looks like a configured secret.
+            if grep -nEI \
+              -e 'shpat_[A-Za-z0-9]{20,}' \
+              -e 'shpss_[A-Za-z0-9]{20,}' \
+              -e 'Atzr\|[A-Za-z0-9_-]{20,}' \
+              -e 'AccountKey=[A-Za-z0-9+/=]{40,}' \
+              -e '"(ClientSecret|ApiKey|AccessToken|RefreshToken|Password)"\s*:\s*"(?!\s*$)[^"$%{][^"]{7,}"' \
+              $candidates 2>/dev/null; then
+              echo "::error::A value that looks like a real secret is committed."
+              status=1
+            fi
+          fi
+
+          if git ls-files | grep -qE '^\.env$'; then
+            echo "::error::.env must never be committed."
+            status=1
+          fi
+          exit $status
+
+      - name: Verify .env.example contains no real values
+        run: |
+          # Every assignment must be empty or an obvious placeholder.
+          if grep -nE '^[A-Z_]+=.+' .env.example | grep -vE '=(postgres|ielbexio|5432|8080|Development|Mock|Fixture|false|change-me-locally)$'; then
+            echo "::error::.env.example appears to contain a real value."
+            exit 1
+          fi
+
+  container:
+    name: Container build
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ielbexio:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Building an image proves it compiles. Starting it proves it runs, which is a different claim.
+      - name: Smoke-test the image against PostgreSQL
+        run: |
+          docker network create ielbexio-ci
+          docker run -d --name db --network ielbexio-ci \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ielbexio \
+            postgres:16-alpine
+
+          for _ in $(seq 1 30); do
+            docker exec db pg_isready -U postgres && break
+            sleep 2
+          done
+
+          docker run -d --name app --network ielbexio-ci -p 8080:8080 \
+            -e ASPNETCORE_ENVIRONMENT=Development \
+            -e IELBEXIO_ConnectionStrings__Postgres="Host=db;Port=5432;Database=ielbexio;Username=postgres;Password=postgres" \
+            ielbexio:${{ github.sha }}
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/health/ready >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+
+          if [ "$ready" != "1" ]; then
+            echo "::error::The container did not become ready."
+            docker logs app
+            exit 1
+          fi
+
+          echo "The container is serving /health/ready."
+          test "$(docker exec app id -u)" != "0" || { echo "::error::The container is running as root."; exit 1; }
+          echo "The container is running as a non-root user."
+
+      - name: Publish the image as an artifact
+        run: |
+          docker save ielbexio:${{ github.sha }} | gzip > ielbexio-image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: container-image
+          path: ielbexio-image.tar.gz
+          retention-days: 7
+
+  # Deliberately no deployment job. Specification §35: do not deploy to production automatically.
+  # docs/deployment.md describes the manual, reviewed path to Azure.

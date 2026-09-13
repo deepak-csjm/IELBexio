@@ -52,7 +52,7 @@ ok "build succeeded"
 
 say "Starting the application"
 # Migrations are applied by the host at startup, and the demo tenant is seeded then too.
-pkill -f "IelBexio.Web" 2>/dev/null || true
+pkill -f "dotnet.*IelBexio\.Web\.dll" 2>/dev/null || true
 sleep 1
 
 export ASPNETCORE_ENVIRONMENT=Development
