@@ -46,7 +46,7 @@ application layer entirely and confirms the database still refuses.
 | Container build | **succeeds**; runs as non-root (uid 1654) |
 | Full demo against the **containerised** app | **passes all 12 stages** |
 | UI | **14/14 pages return 200** and render real data |
-| OpenAPI | **36 documented paths**, OpenAPI 3.1 |
+| OpenAPI | **35 documented paths / 41 operations**, OpenAPI 3.1 |
 | Secret scan | repository and **full git history clean**; scan tested against a planted token to confirm it catches one |
 | Vulnerable dependencies | **none**, including transitive |
 
