@@ -22,6 +22,9 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.12" />
   </ItemGroup>
   <ItemGroup Label="Azure (optional live modes)">
+    <!-- PDF reading. Pure managed, MIT, no native dependency — it runs in the same container as
+         everything else, which a native PDF stack would not. -->
+    <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.25.1" />
     <PackageVersion Include="Azure.Identity" Version="1.19.0" />

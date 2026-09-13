@@ -153,13 +153,23 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
 
         if (!extraction.Succeeded)
         {
-            artifact.Status = DocumentProcessingStatus.Failed;
+            // A refusal is not a failure: the document is intact and simply needs a human or a model.
+            // Recording it as Classified keeps genuine corruption visible instead of burying it among
+            // documents that are merely unsupported.
+            artifact.Status = extraction.WasRefused
+                ? DocumentProcessingStatus.Classified
+                : DocumentProcessingStatus.Failed;
+
             artifact.RejectionReason = extraction.FailureReason;
             await _db.SaveChangesAsync(cancellationToken);
 
+            var message = extraction.WasRefused
+                ? $"Stored and classified, not extracted: {extraction.FailureReason}"
+                : $"Stored, but extraction failed: {extraction.FailureReason}";
+
             return Result<DocumentIngestionResult>.Success(new DocumentIngestionResult(
                 artifact.Id, artifact.Status, inspection.Sha256, inspection.DetectedContentType, inspection.Kind,
-                null, extraction.Method, $"Stored, but extraction failed: {extraction.FailureReason}", null));
+                null, extraction.Method, message, null));
         }
 
         // 6. Persist the canonical invoice the extractor produced.

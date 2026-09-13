@@ -12,6 +12,8 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="WireMock.Net" />
+    <!-- Used only to build real PDFs for the extraction tests. -->
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\IelBexio.Domain\IelBexio.Domain.csproj" />

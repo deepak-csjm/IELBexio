@@ -1,6 +1,6 @@
 # Testing
 
-247 tests: 203 unit, 35 integration and 9 browser. Every integration and browser test runs against
+259 tests: 213 unit, 37 integration and 9 browser. Every integration and browser test runs against
 a real PostgreSQL; the browser tests drive the real application in real Chromium.
 
 ## What each layer proves

@@ -231,13 +231,13 @@ public sealed class DocumentIngestionTests
     }
 
     [Fact]
-    public async Task A_pdf_is_stored_and_classified_but_not_extracted_when_ai_is_disabled()
+    public async Task A_printed_pdf_is_stored_and_classified_but_refused_rather_than_partially_extracted()
     {
-        // Honest behaviour rather than a silent failure: there is no deterministic PDF extractor, so the
-        // document is retained and classified and the caller is told why it was not extracted.
+        // A printed page is a design, not a format. The document is retained and classified, and the
+        // caller is told exactly why nothing was read from it — never handed a half-filled invoice.
         await using var host = await TestHost.CreateAsync(_postgres, "doc_pdf");
 
-        var pdf = Encoding.ASCII.GetBytes("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n%%EOF");
+        var pdf = await File.ReadAllBytesAsync(Path.Combine(FixturePaths.Directory("documents"), "printed-invoice.pdf"));
 
         var result = await host.AsAdminAsync(sp =>
             sp.GetRequiredService<IDocumentIngestionService>().IngestAsync(pdf, "scan.pdf", "application/pdf"));
@@ -252,6 +252,54 @@ public sealed class DocumentIngestionTests
             var artifact = await sp.GetRequiredService<AppDbContext>().DocumentArtifacts.SingleAsync();
             artifact.BlobUri.Should().StartWith("local://", "an accepted document is stored even when it cannot be extracted");
         });
+    }
+
+    [Fact]
+    public async Task A_factur_x_pdf_reaches_a_canonical_invoice_with_no_ai_involved()
+    {
+        // The one PDF that can be read exactly: the invoice travels inside it as XML. This runs with AI
+        // disabled, which is what proves no model was consulted.
+        await using var host = await TestHost.CreateAsync(_postgres, "doc_facturx");
+
+        var pdf = await File.ReadAllBytesAsync(Path.Combine(FixturePaths.Directory("documents"), "facturx-invoice.pdf"));
+
+        var result = await host.AsAdminAsync(sp =>
+            sp.GetRequiredService<IDocumentIngestionService>().IngestAsync(pdf, "invoice.pdf", "application/pdf"));
+
+        result.Value!.Status.Should().Be(DocumentProcessingStatus.Extracted);
+        result.Value.ExtractionMethod.Should().Be(ExtractionMethod.EmbeddedXmlParser);
+        result.Value.InvoiceId.Should().NotBeNull();
+
+        await host.AsAdminAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<AppDbContext>();
+
+            var invoice = await db.Invoices.Include(i => i.Lines).SingleAsync();
+            invoice.InvoiceNumber.Should().Be("FX-2026-0042");
+            invoice.Currency.Should().Be("CHF");
+            invoice.TotalAmount.Should().Be(1081.00m);
+            invoice.Lines.Should().HaveCount(2);
+
+            // No AI was involved, so nothing may have been recorded against the AI budget.
+            (await db.AiUsageRecords.CountAsync()).Should().Be(0);
+            (await db.AiProposals.CountAsync()).Should().Be(0);
+        });
+    }
+
+    [Fact]
+    public async Task A_malformed_pdf_fails_rather_than_being_reported_as_merely_unsupported()
+    {
+        // The distinction that makes the refusal above meaningful: a broken document is a failure, so
+        // real corruption stays visible instead of hiding among files that are simply not readable here.
+        await using var host = await TestHost.CreateAsync(_postgres, "doc_badpdf");
+
+        var pdf = Encoding.ASCII.GetBytes("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n%%EOF");
+
+        var result = await host.AsAdminAsync(sp =>
+            sp.GetRequiredService<IDocumentIngestionService>().IngestAsync(pdf, "broken.pdf", "application/pdf"));
+
+        result.Value!.Status.Should().Be(DocumentProcessingStatus.Failed);
+        result.Value.Message.Should().Contain("could not be read");
     }
 
     [Fact]

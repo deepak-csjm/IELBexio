@@ -41,7 +41,7 @@ application layer entirely and confirms the database still refuses.
 | | Result |
 |---|---|
 | `dotnet build -c Release` | **0 warnings, 0 errors** (warnings are errors solution-wide) |
-| `dotnet test` | **247 passed, 0 failed** (203 unit + 35 integration + 9 browser) |
+| `dotnet test` | **259 passed, 0 failed** (213 unit + 37 integration + 9 browser) |
 | Migrations against an empty database | **25 tables created** |
 | Container build | **succeeds**; runs as non-root (uid 1654) |
 | Full demo against the **containerised** app | **passes all 12 stages** |
@@ -149,8 +149,9 @@ evaluation:
 - **Browser coverage is partial.** Nine Playwright tests drive the review and approval flows in real
   Chromium, including the whole click-through to an invoice created in Bexio. Screens outside that path
   are checked for rendering but not driven.
-- **PDF and image extraction requires AI.** With AI disabled a PDF is stored, hashed and classified but
-  not extracted. CSV and JSON are extracted deterministically.
+- **Only a Factur-X or ZUGFeRD PDF is extracted deterministically**, from the invoice XML it embeds.
+  Every other PDF is refused with a message saying what it actually contains, rather than partially
+  extracted. Reading a printed page still needs AI or manual entry.
 - **No webhook endpoints.** Incremental sync is poll-based.
 - **No source-region highlighting** on documents (§15 asks "where practical").
 - **No bulk approval** — deliberate for money handling, but would not scale.
@@ -208,7 +209,7 @@ and structural prompt-injection defences including the fence-escape case.
 | 2 | Bexio configuration discoverable | ✅ Implemented; verified against the mock |
 | 3 | Shopify data importable | ✅ Verified via fixtures through the shared normaliser |
 | 4 | Amazon path demonstrable with fixtures | ✅ Verified |
-| 5 | Structured **and** document ingestion | ✅ Both, verified end to end: an uploaded CSV reaches Bexio through the same approval path. PDF/image extraction needs AI |
+| 5 | Structured **and** document ingestion | ✅ Both, verified end to end: an uploaded CSV reaches Bexio through the same approval path, and a Factur-X PDF is read from its embedded XML with no AI. A printed or scanned PDF is refused, not guessed |
 | 6 | Source-independent canonical records | ✅ Verified |
 | 7 | Deterministic validation works | ✅ Verified, extensively |
 | 8 | AI isolated behind a controlled gateway | ✅ Verified |
@@ -225,7 +226,7 @@ and structural prompt-injection defences including the fence-escape case.
 | 19 | Negative scenarios tested | ✅ §32 covered |
 | 20 | Complete happy path demonstrated | ✅ All 20 steps |
 | 21 | No secrets committed | ✅ Verified across full history |
-| 22 | Automated tests pass | ✅ 247/247 |
+| 22 | Automated tests pass | ✅ 259/259 |
 | 23 | Documentation accurately describes what is live, mocked, unavailable or uncertain | ✅ This report |
 
 **22 of 23 met. Criterion 1 is blocked by environment, not by design** — the implementation exists and
@@ -280,7 +281,7 @@ regression test.
 
 **Then, in priority order**
 
-11. Deterministic PDF text extraction, so AI is needed only for genuinely unstructured documents.
+11. Hand the PDF text layer to the AI extractor, so a printed invoice has a route that is not retyping.
 12. Shopify webhooks for near-real-time ingestion.
 13. Bexio credit-note posting for refunds.
 14. Load testing, then revisit the polling outbox and the lack of archival.

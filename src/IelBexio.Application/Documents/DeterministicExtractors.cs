@@ -7,9 +7,28 @@ using IelBexio.Domain.Invoicing;
 
 namespace IelBexio.Application.Documents;
 
+/// <summary>How an attempt to extract an invoice from a document ended.</summary>
+/// <remarks>
+/// <see cref="Refused"/> is deliberately not a failure. A printed PDF that this system will not read is
+/// an intact, valid document that simply needs a human or a model; a truncated one is broken. Collapsing
+/// the two would tell a reviewer to rescan a file that is perfectly fine, and would bury real corruption
+/// among documents that are merely unsupported.
+/// </remarks>
+public enum ExtractionOutcome
+{
+    /// <summary>An invoice was extracted.</summary>
+    Succeeded = 0,
+
+    /// <summary>The document is readable, and this extractor will not derive an invoice from it.</summary>
+    Refused = 1,
+
+    /// <summary>Something was wrong with the document itself.</summary>
+    Failed = 2,
+}
+
 /// <summary>The outcome of attempting to extract an invoice from a document.</summary>
 public sealed record DocumentExtraction(
-    bool Succeeded,
+    ExtractionOutcome Outcome,
     ExtractionMethod Method,
     string ExtractorVersion,
     Invoice? Invoice,
@@ -18,8 +37,16 @@ public sealed record DocumentExtraction(
     string? FailureReason,
     IReadOnlyList<string> Notes)
 {
+    public bool Succeeded => Outcome == ExtractionOutcome.Succeeded;
+
+    /// <summary>A document this extractor understood and declined to interpret. Not an error.</summary>
+    public bool WasRefused => Outcome == ExtractionOutcome.Refused;
+
     public static DocumentExtraction Failed(ExtractionMethod method, string version, string reason) =>
-        new(false, method, version, null, [], null, reason, []);
+        new(ExtractionOutcome.Failed, method, version, null, [], null, reason, []);
+
+    public static DocumentExtraction Refused(ExtractionMethod method, string version, string reason) =>
+        new(ExtractionOutcome.Refused, method, version, null, [], null, reason, []);
 }
 
 /// <summary>
@@ -156,7 +183,7 @@ public sealed class JsonInvoiceExtractor : IDeterministicDocumentExtractor
                 notes.Add("The document stated no total; it was derived from the lines and must be verified.");
             }
 
-            return new DocumentExtraction(true, Method, Version, invoice, lines, customer, null, notes);
+            return new DocumentExtraction(ExtractionOutcome.Succeeded, Method, Version, invoice, lines, customer, null, notes);
         }
     }
 
@@ -328,7 +355,7 @@ public sealed class CsvInvoiceExtractor : IDeterministicDocumentExtractor
 
         notes.Add("Header totals were derived from the line items, since a CSV line export carries no header totals.");
 
-        return new DocumentExtraction(true, Method, Version, invoice, lines, customer, null, notes);
+        return new DocumentExtraction(ExtractionOutcome.Succeeded, Method, Version, invoice, lines, customer, null, notes);
     }
 
     private static string? Field(List<string> row, Dictionary<string, int> header, string name) =>

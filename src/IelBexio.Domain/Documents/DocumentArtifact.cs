@@ -87,4 +87,16 @@ public sealed class ExtractionResult : TenantEntity
     public string CacheKey { get; set; } = string.Empty;
 }
 
-public enum ExtractionMethod { Unknown = 0, StructuredApi = 1, CsvParser = 2, JsonParser = 3, AiExtraction = 4, Manual = 5 }
+/// <remarks>Values are persisted. Append only — renumbering would silently relabel history.</remarks>
+public enum ExtractionMethod
+{
+    Unknown = 0,
+    StructuredApi = 1,
+    CsvParser = 2,
+    JsonParser = 3,
+    AiExtraction = 4,
+    Manual = 5,
+
+    /// <summary>Read from structured XML the document carried itself, such as Factur-X or ZUGFeRD.</summary>
+    EmbeddedXmlParser = 6,
+}

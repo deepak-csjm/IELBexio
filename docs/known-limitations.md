@@ -24,9 +24,18 @@ What this POC does not do. Stated so nobody discovers it during an evaluation.
 
 ## Functional
 
-- **PDF and image extraction requires AI.** There is no deterministic PDF text extraction, so with AI
-  disabled a PDF is stored, hashed and classified but not extracted. CSV and JSON are extracted
-  deterministically.
+- **Only a Factur-X or ZUGFeRD PDF is extracted deterministically.** Such a PDF carries the invoice as
+  embedded XML and is read exactly, with no AI. Any other PDF carries a printed page: it is stored,
+  hashed, classified, its text layer read, and then **refused**, with a message saying how much text was
+  found and whether the file is a scan. It is not partially extracted, because a half-extracted invoice
+  looks finished. Extracting one still needs AI or manual entry, and nothing yet hands the extracted
+  text to the AI extractor — the port exists and is unused.
+- **The Cross Industry Invoice parser is unverified against commercial output.** Element names come
+  from the UN/CEFACT structure and are exercised against fixtures written here, not against an invoice
+  produced by real invoicing software. It matches on local names only, so it is insensitive to which
+  ZUGFeRD or Factur-X version produced the file, but confirm it against a genuine document first.
+- **No character recognition.** A scanned PDF or a photographed invoice has no text to read. This is
+  detected and reported rather than guessed at.
 - **No source-region highlighting.** §15 asks for it "where practical"; the UI shows the source payload
   beside the extracted data with per-field provenance, but does not highlight the originating region of
   a PDF.

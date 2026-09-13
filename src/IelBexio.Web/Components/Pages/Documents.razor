@@ -58,6 +58,11 @@ else
                         case Domain.Documents.DocumentProcessingStatus.Failed:
                             <StatusBadge Text="Extraction failed" Tone="StatusBadge.StatusTone.Error" Title="@document.RejectionReason" />
                             break;
+                        case Domain.Documents.DocumentProcessingStatus.Classified when !string.IsNullOrWhiteSpace(document.RejectionReason):
+                            @* Stored and intact, and this system will not read it. Distinct from a
+                               failure on purpose: the file is fine, it just needs a human or a model. *@
+                            <StatusBadge Text="Needs a human" Tone="StatusBadge.StatusTone.Warning" Title="@document.RejectionReason" />
+                            break;
                         default:
                             <StatusBadge Text="@document.Status.ToString()" Tone="StatusBadge.StatusTone.Info" />
                             break;

@@ -101,6 +101,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDeterministicDocumentExtractor, JsonInvoiceExtractor>();
         services.AddSingleton<IDeterministicDocumentExtractor, CsvInvoiceExtractor>();
 
+        // Reads the embedded XML of a Factur-X or ZUGFeRD invoice, and refuses every other PDF rather
+        // than guessing at a printed page. See PdfExtraction.cs.
+        services.AddSingleton<IPdfReader, Documents.PdfPigReader>();
+        services.AddSingleton<IDeterministicDocumentExtractor, PdfInvoiceExtractor>();
+
         services.AddScoped<IMappingService, MappingService>();
         services.AddScoped<IBexioReferenceSyncService, BexioReferenceSyncService>();
         services.AddScoped<BexioPreflightService>();
