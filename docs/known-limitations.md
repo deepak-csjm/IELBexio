@@ -59,9 +59,9 @@ schemes, no withholding tax, no multi-jurisdiction apportionment.
 
 ## Testing
 
-- **No Playwright UI tests.** §2 lists Playwright for critical UI flows. The UI was verified by running
-  it and driving the same workflow through the HTTP API the UI uses, which covers the logic but not the
-  rendering. This is the clearest testing gap.
+- Browser coverage is nine Playwright tests over the review and approval flows. Wide enough to have
+  found three real defects, but it is not full UI coverage: the connections, documents, customers and
+  AI-usage screens are only checked for loading and rendering, not driven.
 - No load or soak testing.
 - No mutation testing.
 - Multi-tenancy is tested for isolation, but the system has only ever run with one tenant.

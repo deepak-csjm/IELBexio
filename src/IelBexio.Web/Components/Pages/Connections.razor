@@ -79,9 +79,11 @@
         </span>
     </div>
 
+<ActionGate>
     <div class="btn-row">
         <button class="btn btn-primary" @onclick="RefreshReferenceAsync" disabled="@_busy">Refresh Bexio reference data</button>
     </div>
+</ActionGate>
 
     @if (_warnings.Count > 0)
     {

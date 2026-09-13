@@ -81,7 +81,9 @@ public sealed class OutboxHostedService : BackgroundService
 
         // The worker is a system actor, not a user. Naming it explicitly keeps the audit trail honest
         // about who did what.
-        if (provider.GetService<ICurrentUser>() is AmbientCurrentUser user)
+        // Resolved by concrete type on purpose: the web host replaces the ICurrentUser registration
+        // with one that reads the authenticated principal, and this scope has none.
+        if (provider.GetService<AmbientCurrentUser>() is { } user)
         {
             user.Set("system:outbox-dispatcher", "Outbox dispatcher", [AppRoles.Admin]);
         }

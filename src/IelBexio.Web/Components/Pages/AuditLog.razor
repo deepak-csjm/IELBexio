@@ -12,12 +12,14 @@
 </p>
 
 <div class="card">
+<ActionGate>
     <div class="row">
         <label class="small muted" for="correlation">Correlation id</label>
         <input id="correlation" type="text" @bind="_correlationFilter" style="width:340px" placeholder="Trace one invoice's whole lifecycle" />
         <button class="btn" @onclick="LoadAsync">Filter</button>
         <button class="btn" @onclick="ClearAsync">Clear</button>
     </div>
+</ActionGate>
 </div>
 
 @if (_events.Count == 0)

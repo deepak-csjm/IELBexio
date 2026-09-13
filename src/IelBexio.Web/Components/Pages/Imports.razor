@@ -19,6 +19,7 @@
 
 <div class="card">
     <div class="card-title">Run an import</div>
+<ActionGate>
     <div class="row">
         <select @bind="_sourceSystem" style="width:auto">
             <option value="Shopify">Shopify</option>
@@ -28,6 +29,7 @@
             @(_busy ? "Importing…" : "Import and validate")
         </button>
     </div>
+</ActionGate>
     <p class="small muted" style="margin-top:8px">
         Every imported invoice is validated immediately, so anything needing attention appears in the review
         queue rather than sitting silently.

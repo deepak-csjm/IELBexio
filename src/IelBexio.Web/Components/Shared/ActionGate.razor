@@ -1,0 +1,23 @@
+@* 
+    Prevents a click from being silently swallowed before the page is live.
+
+    Interactive server components are pre-rendered as ordinary HTML first, and their event handlers do
+    not exist until the circuit connects. A button in that window looks completely normal and does
+    nothing when pressed. On a screen whose buttons submit and approve invoices, a click that appears
+    to work and does not is unacceptable, so the controls are visibly held until the page can act on
+    them. The data attribute is also what the browser tests wait on, which keeps them honest: they
+    cannot pass by clicking something a real user could not have used either.
+*@
+<div class="action-gate @(RendererInfo.IsInteractive ? "is-live" : "is-connecting")"
+     data-interactive="@(RendererInfo.IsInteractive ? "true" : "false")">
+    @ChildContent
+
+    @if (!RendererInfo.IsInteractive)
+    {
+        <p class="small muted" role="status">Connecting — these actions become available in a moment.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

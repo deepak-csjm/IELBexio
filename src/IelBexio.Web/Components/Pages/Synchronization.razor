@@ -23,7 +23,9 @@
         flagged for a human; nothing is repaired automatically, because choosing which side is right is a
         judgement rather than a rule.
     </p>
+<ActionGate>
     <button class="btn" @onclick="ReconcileAsync" disabled="@_busy">Run reconciliation</button>
+</ActionGate>
 </div>
 
 <h2>Outbox</h2>
@@ -59,7 +61,7 @@ else
                 <td>
                     @if (message.Status == Domain.Sync.OutboxStatus.DeadLettered && CanRetry)
                     {
-                        <button class="btn" @onclick="() => RetryAsync(message.Id)">Retry</button>
+                        <ActionGate><button class="btn" @onclick="() => RetryAsync(message.Id)">Retry</button></ActionGate>
                     }
                 </td>
             </tr>

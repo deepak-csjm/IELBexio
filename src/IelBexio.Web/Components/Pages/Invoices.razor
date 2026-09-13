@@ -21,7 +21,9 @@
                 <option value="@state">@state</option>
             }
         </select>
+<ActionGate>
         <button class="btn" @onclick="ReloadAsync">Refresh</button>
+</ActionGate>
     </div>
 </div>
 
@@ -65,9 +67,9 @@ else
                     }
                 </td>
                 <td class="nowrap small">@(row.InvoiceDate?.ToString("yyyy-MM-dd") ?? "—")</td>
-                <td class="numeric"><MoneyText Amount="row.Subtotal" Currency="row.Currency" /></td>
-                <td class="numeric"><MoneyText Amount="row.Tax" Currency="row.Currency" /></td>
-                <td class="numeric"><strong><MoneyText Amount="row.Total" Currency="row.Currency" /></strong></td>
+                <td class="numeric"><MoneyText Amount="row.Subtotal" Currency="@row.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="row.Tax" Currency="@row.Currency" /></td>
+                <td class="numeric"><strong><MoneyText Amount="row.Total" Currency="@row.Currency" /></strong></td>
                 <td><WorkflowBadge State="row.State" /></td>
                 <td>
                     <div class="stack">

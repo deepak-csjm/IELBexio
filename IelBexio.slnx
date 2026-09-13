@@ -10,6 +10,7 @@
     <Project Path="src/IelBexio.Web/IelBexio.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/IelBexio.E2ETests/IelBexio.E2ETests.csproj" />
     <Project Path="tests/IelBexio.IntegrationTests/IelBexio.IntegrationTests.csproj" />
     <Project Path="tests/IelBexio.UnitTests/IelBexio.UnitTests.csproj" />
   </Folder>

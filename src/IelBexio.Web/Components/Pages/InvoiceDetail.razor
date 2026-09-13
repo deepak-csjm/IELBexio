@@ -100,24 +100,24 @@ else
             </div>
             <div class="field-row">
                 <span class="field-label">Subtotal</span>
-                <span class="field-value"><MoneyText Amount="_invoice.SubtotalAmount" Currency="_invoice.Currency" /></span>
+                <span class="field-value"><MoneyText Amount="_invoice.SubtotalAmount" Currency="@_invoice.Currency" /></span>
             </div>
             <div class="field-row">
                 <span class="field-label">Discount</span>
-                <span class="field-value"><MoneyText Amount="_invoice.DiscountAmount" Currency="_invoice.Currency" /></span>
+                <span class="field-value"><MoneyText Amount="_invoice.DiscountAmount" Currency="@_invoice.Currency" /></span>
             </div>
             <div class="field-row">
                 <span class="field-label">Shipping</span>
-                <span class="field-value"><MoneyText Amount="_invoice.ShippingAmount" Currency="_invoice.Currency" /></span>
+                <span class="field-value"><MoneyText Amount="_invoice.ShippingAmount" Currency="@_invoice.Currency" /></span>
             </div>
             <div class="field-row">
                 <span class="field-label">Tax</span>
-                <span class="field-value"><MoneyText Amount="_invoice.TaxAmount" Currency="_invoice.Currency" /></span>
+                <span class="field-value"><MoneyText Amount="_invoice.TaxAmount" Currency="@_invoice.Currency" /></span>
             </div>
             <div class="field-row">
                 <span class="field-label">Total</span>
                 <span class="field-value">
-                    <strong><MoneyText Amount="_invoice.TotalAmount" Currency="_invoice.Currency" /></strong>
+                    <strong><MoneyText Amount="_invoice.TotalAmount" Currency="@_invoice.Currency" /></strong>
                     <div class="provenance">@ProvenanceFor("totalAmount")</div>
                 </span>
             </div>
@@ -149,11 +149,11 @@ else
                 </td>
                 <td class="mono small">@(line.Sku ?? "—")</td>
                 <td class="numeric">@line.Quantity.ToString("0.###")</td>
-                <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="line.Currency" /></td>
-                <td class="numeric"><MoneyText Amount="line.NetAmount" Currency="line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="@line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.NetAmount" Currency="@line.Currency" /></td>
                 <td class="numeric">@line.TaxRatePercent.ToString("0.##")%</td>
-                <td class="numeric"><MoneyText Amount="line.TaxAmount" Currency="line.Currency" /></td>
-                <td class="numeric"><MoneyText Amount="line.GrossAmount" Currency="line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.TaxAmount" Currency="@line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.GrossAmount" Currency="@line.Currency" /></td>
                 <td>
                     @if (assessment is null)
                     {
@@ -272,7 +272,7 @@ else
                         <td>@line.LineNumber</td>
                         <td>@line.Description</td>
                         <td class="numeric">@line.Quantity.ToString("0.###")</td>
-                        <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="_preview.Currency" /></td>
+                        <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="@_preview.Currency" /></td>
                         <td class="small">@(line.BexioTaxName ?? line.BexioTaxId ?? "—") @(line.BexioTaxRatePercent is { } r ? $"({r}%)" : "")</td>
                         <td class="small">@(line.BexioAccountName ?? line.BexioAccountId ?? "—")</td>
                     </tr>
@@ -281,15 +281,16 @@ else
             </table>
 
             <div class="row right" style="justify-content:flex-end; margin-top:10px">
-                <span>Net <MoneyText Amount="_preview.TotalNet" Currency="_preview.Currency" /></span>
-                <span>Tax <MoneyText Amount="_preview.TotalTax" Currency="_preview.Currency" /></span>
-                <strong>Total <MoneyText Amount="_preview.TotalGross" Currency="_preview.Currency" /></strong>
+                <span>Net <MoneyText Amount="_preview.TotalNet" Currency="@_preview.Currency" /></span>
+                <span>Tax <MoneyText Amount="_preview.TotalTax" Currency="@_preview.Currency" /></span>
+                <strong>Total <MoneyText Amount="_preview.TotalGross" Currency="@_preview.Currency" /></strong>
             </div>
         </div>
     }
 
     <h2>Actions</h2>
     <div class="card">
+        <ActionGate>
         <div class="btn-row">
             <button class="btn" @onclick="RevalidateAsync">Re-run validation</button>
 
@@ -326,6 +327,7 @@ else
                 <textarea id="comment" rows="2" @bind="_comment"></textarea>
             </div>
         }
+        </ActionGate>
 
         <p class="small muted" style="margin-top:12px">
             There is no action here that posts directly to Bexio. Approval writes a queue entry in the same

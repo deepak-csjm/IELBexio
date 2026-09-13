@@ -1,6 +1,7 @@
 # Testing
 
-227 tests: 192 unit and 35 integration. Every integration test runs against a real PostgreSQL.
+247 tests: 203 unit, 35 integration and 9 browser. Every integration and browser test runs against
+a real PostgreSQL; the browser tests drive the real application in real Chromium.
 
 ## What each layer proves
 
@@ -74,12 +75,45 @@ dotnet test                                       # everything
 dotnet test tests/IelBexio.UnitTests              # no database needed
 IELBEXIO_TEST_POSTGRES="Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=postgres" \
   dotnet test tests/IelBexio.IntegrationTests
+dotnet test tests/IelBexio.E2ETests                # real browser; needs Chromium and PostgreSQL
 ./scripts/setup-demo.sh --fresh && ./scripts/run-demo.sh   # the demo, as a live check
 ```
 
-## The gap
+The browser tests need a Chromium that Playwright can launch. `pwsh tests/IelBexio.E2ETests/bin/Debug/net10.0/playwright.ps1 install chromium`
+downloads the matching build; on a machine that already has one (`PLAYWRIGHT_BROWSERS_PATH` set, as in
+many CI images) the fixture finds it, and `IELBEXIO_E2E_CHROMIUM` overrides the choice outright.
 
-**No Playwright UI tests.** §2 lists Playwright for critical UI flows. The UI was verified by running
-it — all 14 pages return 200 and render real data — and by driving the identical workflow through the
-HTTP API the UI itself calls. That covers the logic thoroughly but not the rendering or the client-side
-interaction. It is the clearest testing gap in this POC.
+## Browser tests
+
+`tests/IelBexio.E2ETests` drives the real application in headless Chromium through Playwright: nine
+tests covering the dashboard, every navigation destination, the review queue, the document-beside-data
+screen, the full click-through from review to an invoice created in Bexio, an approval blocked by a
+failing pre-flight, a server-side role refusal, an audit trace by correlation id, and the tax mapping
+screen.
+
+They start the published host as a **separate process** against a **per-test database**, rather than
+using `WebApplicationFactory`. An in-process test server would not exercise static assets, the Blazor
+circuit over a real WebSocket, or the background worker on its own timer — which are exactly the things
+a UI test is for. Per-test isolation costs a few seconds of start-up each and buys a suite whose
+failures do not depend on execution order; these tests mutate workflow state, so sharing one database
+would mean an approval in one test changing what another test finds.
+
+On failure each test writes a screenshot and the rendered HTML to `artifacts/e2e/`, because a UI
+failure reported as nothing but a selector timeout is close to useless.
+
+They earned their place immediately. Running them for the first time found three defects that every
+other form of testing here had missed:
+
+| Defect | Why nothing else caught it |
+| --- | --- |
+| Interactive renders had no tenant and no roles, so every page blanked out once its Blazor circuit connected | Request middleware set them; a circuit has its own DI scope it never enters. Page-level HTTP checks saw only the correct pre-render. |
+| Every monetary amount rendered with a literal `row.Currency` instead of its currency | Razor treats an unprefixed attribute value on a `string` parameter as literal text. It compiles, and the API — which the other tests drive — was always correct. |
+| Buttons pre-rendered before the circuit connected looked enabled and silently swallowed clicks | Only a real browser clicking a real button at real timing can see it. |
+
+The second and third are the kind that only a browser finds: a correct system displaying incorrectly.
+
+## Remaining gaps
+
+- No load or soak testing, and no mutation testing.
+- Multi-tenancy is tested for isolation, but the system has only ever run with one tenant.
+- Browser coverage stops at the review and approval flows; other screens are checked for rendering only.

@@ -92,7 +92,7 @@ else
                 <td>
                     @if (CanEdit && _bexioAccounts.Count > 0)
                     {
-                        <div class="row">
+                        <ActionGate><div class="row">
                             <select @bind="_selectedAccount[accountCode]" style="width:auto">
                                 <option value="">Choose a Bexio account…</option>
                                 @foreach (var account in _bexioAccounts)
@@ -101,7 +101,7 @@ else
                                 }
                             </select>
                             <button class="btn" @onclick="() => SaveAccountAsync(accountCode)">Save</button>
-                        </div>
+                        </div></ActionGate>
                     }
                 </td>
             </tr>

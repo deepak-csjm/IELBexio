@@ -151,3 +151,12 @@ input[type=text], input[type=date], input[type=number], select, textarea {
 
 .doc-pane { background: #2c3440; color: #e6ebf2; border-radius: 4px; padding: 12px; overflow: auto; max-height: 640px; }
 .doc-pane pre { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+
+/* Controls that are not yet wired to a live circuit must not look usable — see ActionGate.razor. */
+.action-gate.is-connecting button,
+.action-gate.is-connecting input,
+.action-gate.is-connecting select,
+.action-gate.is-connecting textarea {
+    pointer-events: none;
+    opacity: 0.55;
+}

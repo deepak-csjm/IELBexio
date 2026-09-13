@@ -5,7 +5,19 @@
     [Parameter, EditorRequired] public decimal Amount { get; set; }
     [Parameter, EditorRequired] public string Currency { get; set; } = "CHF";
 
-    private string Formatted =>
-        $"{decimal.Round(Amount, Money.ScaleFor(Currency), MidpointRounding.ToEven)
-            .ToString($"N{Money.ScaleFor(Currency)}", System.Globalization.CultureInfo.InvariantCulture)} {Currency}";
+    // Built through Money rather than formatted from the raw parameters, so an invalid currency code
+    // throws here instead of being printed beside a number. That is not defensive padding: Razor
+    // treats an unprefixed attribute value on a string parameter as literal text, so Currency="x.Ccy"
+    // silently renders the literal "x.Ccy" — which once shipped every amount in this application
+    // without a currency. A value object that refuses to exist in that state ends the whole class of
+    // bug, and §21 requires every monetary value to carry its currency anyway.
+    private string Formatted
+    {
+        get
+        {
+            var money = new Money(Amount, Currency).RoundToCurrencyScale();
+
+            return $"{money.Amount.ToString($"N{Money.ScaleFor(money.Currency)}", System.Globalization.CultureInfo.InvariantCulture)} {money.Currency}";
+        }
+    }
 }

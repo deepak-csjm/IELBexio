@@ -9,14 +9,26 @@ only in the UI, so hiding a button is not the control. Tests attack this directl
 the Approver role is refused approval, and a ReadOnly user is refused corrections.
 
 **Authentication is the largest gap in this POC, and it is deliberate rather than overlooked.** The
-specification requires Microsoft Entra ID. The application is written against `ICurrentUser` so that
-swapping Entra in is a registration change, and the middleware already reads Entra claims when
-`Authentication:Mode=EntraId`. But no Entra tenant was available here, so the POC ships a
+specification requires Microsoft Entra ID. No Entra tenant was available here, so the POC ships a
 **development identity** that reads a role from configuration or a request header.
 
-That is not authentication. The middleware **refuses to start** in development-identity mode outside
-the Development environment, so the unsafe path cannot be reached by accident in a deployed
-environment — but it must be replaced before any real use.
+That is not authentication. The application **refuses to start** outside the Development environment,
+so a deployed instance cannot fall back to it by accident — but it must be replaced before any real
+use.
+
+Identity is issued as a real ASP.NET Core authentication scheme rather than assembled in middleware,
+which is what makes replacing it a registration change: the tenant travels as a claim
+(`ielbexio:tenant_id`, attached by an `IClaimsTransformation` that is independent of the scheme), and
+everything downstream reads `ICurrentUser` and `ITenantContext`. Nothing outside
+`DevelopmentIdentity.cs` knows a header was involved.
+
+This shape was not chosen on style. An earlier version resolved tenant and roles in request
+middleware, which is correct for HTTP and silently wrong for interactive Blazor: a circuit has its own
+DI scope that no middleware ever enters, so every interactive render ran with **no tenant and no
+roles**. Pages rendered correctly during pre-render and blanked out the moment the circuit connected.
+A principal is the one thing ASP.NET Core flows into a circuit, so tenant and roles have to travel on
+it; `CircuitContextHandler` binds it when the circuit opens. The browser tests exist partly to keep
+that honest — they were what found it.
 
 ## Token handling
 

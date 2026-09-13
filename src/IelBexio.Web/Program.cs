@@ -3,6 +3,8 @@ using IelBexio.Infrastructure.Persistence;
 using IelBexio.Web.Api;
 using IelBexio.Web.Components;
 using IelBexio.Web.Startup;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +23,36 @@ builder.Services.AddIelBexioWorker();
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+
+// ---- Identity -----------------------------------------------------------------------------------
+// Tenant and roles travel on the authenticated principal rather than in per-request ambient state,
+// because that is the only thing ASP.NET Core flows into a Blazor circuit. See DevelopmentIdentity.cs
+// for what this costs and why the alternative was wrong.
+builder.Services.AddHttpContextAccessor();
+
+if (!builder.Environment.IsDevelopment())
+{
+    // Fail at start-up rather than per request. The development identity trusts a header, so a
+    // deployed instance running on it would hand Admin to anyone who asked; refusing to boot is the
+    // only honest behaviour until Entra ID (§24) is configured here.
+    throw new InvalidOperationException(
+        "No production identity provider is configured. This build ships only the development " +
+        "identity, which is not authentication. Configure Microsoft Entra ID before running outside " +
+        "the Development environment.");
+}
+
+builder.Services.AddAuthentication(DevelopmentAuthenticationHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, DevelopmentAuthenticationHandler>(
+        DevelopmentAuthenticationHandler.SchemeName, configureOptions: null);
+
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
+
+// Scoped, not singleton: the DbContext factory it needs is itself scoped.
+builder.Services.AddScoped<IClaimsTransformation, TenantClaimsTransformation>();
+
+// A circuit's scope is never touched by request middleware, so it is seeded from the principal here.
+builder.Services.AddScoped<CircuitHandler, CircuitContextHandler>();
 
 // Readiness and liveness are separated deliberately (§27): liveness says the process is up, readiness
 // says it can actually serve — which for this application means the database is reachable.
@@ -51,7 +83,15 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStatusCodePages();
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseAntiforgery();
+
+// Binds the authenticated principal onto the ambient tenant and actor for the request scope. The
+// circuit equivalent is CircuitContextHandler; see DevelopmentIdentity.cs for why both are needed.
+app.UseMiddleware<RequestContextMiddleware>();
 
 // Correlates every log line for one request, so an invoice's lifecycle is traceable (§27).
 app.Use(async (context, next) =>
@@ -64,8 +104,6 @@ app.Use(async (context, next) =>
         await next();
     }
 });
-
-app.UseMiddleware<RequestContextMiddleware>();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

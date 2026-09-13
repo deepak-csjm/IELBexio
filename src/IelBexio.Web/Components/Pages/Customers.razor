@@ -57,7 +57,7 @@ else
                 <td>
                     @if (CanEdit && _contacts.Count > 0)
                     {
-                        <div class="row">
+                        <ActionGate><div class="row">
                             <select @bind="_selected[row.Customer.Id]" style="width:auto">
                                 <option value="">Choose a Bexio contact…</option>
                                 @foreach (var contact in _contacts)
@@ -66,7 +66,7 @@ else
                                 }
                             </select>
                             <button class="btn" @onclick="() => MapAsync(row.Customer.Id)">Map</button>
-                        </div>
+                        </div></ActionGate>
                     }
                 </td>
             </tr>

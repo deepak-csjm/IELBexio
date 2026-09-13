@@ -41,7 +41,7 @@ application layer entirely and confirms the database still refuses.
 | | Result |
 |---|---|
 | `dotnet build -c Release` | **0 warnings, 0 errors** (warnings are errors solution-wide) |
-| `dotnet test` | **227 passed, 0 failed** (192 unit + 35 integration) |
+| `dotnet test` | **247 passed, 0 failed** (203 unit + 35 integration + 9 browser) |
 | Migrations against an empty database | **25 tables created** |
 | Container build | **succeeds**; runs as non-root (uid 1654) |
 | Full demo against the **containerised** app | **passes all 12 stages** |
@@ -146,9 +146,9 @@ unverified assumption in the codebase, which is why it is asserted explicitly ra
 Full list in [`known-limitations.md`](known-limitations.md). The ones that would matter most in an
 evaluation:
 
-- **No Playwright UI tests.** §2 lists them. The UI was verified by running it and driving the identical
-  workflow through the API it calls — which covers the logic but not the rendering. **The clearest
-  testing gap.**
+- **Browser coverage is partial.** Nine Playwright tests drive the review and approval flows in real
+  Chromium, including the whole click-through to an invoice created in Bexio. Screens outside that path
+  are checked for rendering but not driven.
 - **PDF and image extraction requires AI.** With AI disabled a PDF is stored, hashed and classified but
   not extracted. CSV and JSON are extracted deterministically.
 - **No webhook endpoints.** Incremental sync is poll-based.
@@ -225,7 +225,7 @@ and structural prompt-injection defences including the fence-escape case.
 | 19 | Negative scenarios tested | ✅ §32 covered |
 | 20 | Complete happy path demonstrated | ✅ All 20 steps |
 | 21 | No secrets committed | ✅ Verified across full history |
-| 22 | Automated tests pass | ✅ 227/227 |
+| 22 | Automated tests pass | ✅ 247/247 |
 | 23 | Documentation accurately describes what is live, mocked, unavailable or uncertain | ✅ This report |
 
 **22 of 23 met. Criterion 1 is blocked by environment, not by design** — the implementation exists and
@@ -273,7 +273,7 @@ regression test.
 
 5. Verify the Amazon tax-inclusive pricing assumption (U7) against a real order.
 6. Wire up malware scanning behind the existing hook.
-7. Add Playwright tests for the review and approval flows.
+7. Extend the browser tests beyond the review and approval flows.
 8. Add dead-letter alerting and a reconciliation schedule.
 9. `REVOKE UPDATE, DELETE` on the audit tables.
 10. Enable dual control (`prepared_by != approved_by`).
