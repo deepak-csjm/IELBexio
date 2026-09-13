@@ -41,12 +41,12 @@ application layer entirely and confirms the database still refuses.
 | | Result |
 |---|---|
 | `dotnet build -c Release` | **0 warnings, 0 errors** (warnings are errors solution-wide) |
-| `dotnet test` | **221 passed, 0 failed** (192 unit + 29 integration) |
+| `dotnet test` | **227 passed, 0 failed** (192 unit + 35 integration) |
 | Migrations against an empty database | **25 tables created** |
 | Container build | **succeeds**; runs as non-root (uid 1654) |
 | Full demo against the **containerised** app | **passes all 12 stages** |
 | UI | **14/14 pages return 200** and render real data |
-| OpenAPI | **35 documented paths**, OpenAPI 3.1 |
+| OpenAPI | **36 documented paths**, OpenAPI 3.1 |
 | Secret scan | repository and **full git history clean**; scan tested against a planted token to confirm it catches one |
 | Vulnerable dependencies | **none**, including transitive |
 
@@ -208,7 +208,7 @@ and structural prompt-injection defences including the fence-escape case.
 | 2 | Bexio configuration discoverable | ✅ Implemented; verified against the mock |
 | 3 | Shopify data importable | ✅ Verified via fixtures through the shared normaliser |
 | 4 | Amazon path demonstrable with fixtures | ✅ Verified |
-| 5 | Structured **and** document ingestion | ✅ Both; PDF/image extraction needs AI |
+| 5 | Structured **and** document ingestion | ✅ Both, verified end to end: an uploaded CSV reaches Bexio through the same approval path. PDF/image extraction needs AI |
 | 6 | Source-independent canonical records | ✅ Verified |
 | 7 | Deterministic validation works | ✅ Verified, extensively |
 | 8 | AI isolated behind a controlled gateway | ✅ Verified |
@@ -225,7 +225,7 @@ and structural prompt-injection defences including the fence-escape case.
 | 19 | Negative scenarios tested | ✅ §32 covered |
 | 20 | Complete happy path demonstrated | ✅ All 20 steps |
 | 21 | No secrets committed | ✅ Verified across full history |
-| 22 | Automated tests pass | ✅ 221/221 |
+| 22 | Automated tests pass | ✅ 227/227 |
 | 23 | Documentation accurately describes what is live, mocked, unavailable or uncertain | ✅ This report |
 
 **22 of 23 met. Criterion 1 is blocked by environment, not by design** — the implementation exists and

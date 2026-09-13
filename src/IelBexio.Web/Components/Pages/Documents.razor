@@ -2,12 +2,7 @@
 @rendermode InteractiveServer
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IelBexio.Application.Abstractions.ITenantContext Tenant
-@inject IelBexio.Application.Abstractions.IClock Clock
-@inject IelBexio.Application.Abstractions.IBlobStore Blobs
-@inject IelBexio.Application.Abstractions.IAuditWriter Audit
-@inject IelBexio.Application.Documents.FileInspector Inspector
-@inject IEnumerable<IelBexio.Application.Documents.IDeterministicDocumentExtractor> Extractors
-@inject IelBexio.Application.Invoices.IInvoiceProcessingService Processing
+@inject IelBexio.Application.Documents.IDocumentIngestionService Ingestion
 
 <PageTitle>Documents</PageTitle>
 
@@ -106,6 +101,11 @@ else
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Delegates to <see cref="IelBexio.Application.Documents.IDocumentIngestionService"/> — the same
+    /// service the REST API uses. The pipeline decides whether a file is safe, so it belongs in a
+    /// tested service rather than in a component, and the UI and the API must not be able to diverge.
+    /// </summary>
     private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
     {
         _message = null;
@@ -117,123 +117,20 @@ else
             await using var stream = file.OpenReadStream(MaxUploadBytes);
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
-            var content = buffer.ToArray();
 
-            // The inspector decides the type from the bytes, not from file.ContentType.
-            var inspection = Inspector.Inspect(content, file.ContentType, file.Name);
+            var result = await Ingestion.IngestAsync(buffer.ToArray(), file.Name, file.ContentType);
 
-            await using var db = await DbFactory.CreateDbContextAsync();
-            db.SuppressTenantFilter = true;
-
-            // Content-addressed duplicate detection: the same bytes are never ingested twice.
-            var existing = await db.DocumentArtifacts
-                .FirstOrDefaultAsync(d => d.TenantId == Tenant.TenantId && d.Sha256 == inspection.Sha256);
-
-            if (existing is not null)
+            if (result.Failed)
             {
-                _message = $"This file is byte-for-byte identical to '{existing.OriginalFileName}', ingested on " +
-                           $"{existing.IngestedAt:yyyy-MM-dd}. It has not been ingested again.";
-                _messageIsError = false;
-                await LoadAsync();
-                return;
-            }
-
-            var artifact = new Domain.Documents.DocumentArtifact
-            {
-                TenantId = Tenant.TenantId,
-                OriginalFileName = file.Name,
-                ContentType = inspection.DetectedContentType,
-                SizeBytes = inspection.SizeBytes,
-                Sha256 = inspection.Sha256,
-                Kind = inspection.Kind,
-                IngestedAt = Clock.UtcNow,
-                SourceSystem = SourceSystem.DocumentUpload,
-            };
-
-            if (!inspection.IsAccepted)
-            {
-                // Rejections are recorded, not discarded: repeated attempts to upload the same bad file
-                // are worth being able to see.
-                artifact.Status = Domain.Documents.DocumentProcessingStatus.Rejected;
-                artifact.RejectionReason = inspection.RejectionReason;
-                artifact.BlobUri = "(not stored)";
-
-                db.DocumentArtifacts.Add(artifact);
-                await db.SaveChangesAsync();
-                await Audit.WriteAsync(Domain.Audit.AuditActions.DocumentRejected, nameof(Domain.Documents.DocumentArtifact),
-                    artifact.Id, reason: inspection.RejectionReason);
-
-                _message = $"Rejected: {inspection.RejectionReason}";
+                _message = $"{result.ErrorCode}: {result.ErrorMessage}";
                 _messageIsError = true;
-                await LoadAsync();
-                return;
             }
-
-            // The stored name is generated, never derived from the upload (§25).
-            var blobName = Infrastructure.Blob.BlobNaming.Create(Clock.UtcNow, file.Name);
-            using var toStore = new MemoryStream(content);
-            artifact.BlobUri = await Blobs.PutAsync("documents", blobName, toStore, inspection.DetectedContentType);
-            artifact.Status = Domain.Documents.DocumentProcessingStatus.Validated;
-
-            db.DocumentArtifacts.Add(artifact);
-            await db.SaveChangesAsync();
-            await Audit.WriteAsync(Domain.Audit.AuditActions.DocumentIngested, nameof(Domain.Documents.DocumentArtifact), artifact.Id);
-
-            // Deterministic extraction where the format allows it; no AI is involved.
-            var extractor = Extractors.FirstOrDefault(x => x.CanExtract(inspection.Kind, inspection.DetectedContentType));
-
-            if (extractor is null)
+            else
             {
-                _message = $"Stored. No deterministic extractor handles {inspection.DetectedContentType}; " +
-                           "a PDF or image needs AI extraction, which is disabled in this deployment.";
-                _messageIsError = false;
-                artifact.Status = Domain.Documents.DocumentProcessingStatus.Classified;
-                await db.SaveChangesAsync();
-                await LoadAsync();
-                return;
+                _message = result.Value!.Message;
+                _messageIsError = result.Value.Status is Domain.Documents.DocumentProcessingStatus.Rejected
+                    or Domain.Documents.DocumentProcessingStatus.Failed;
             }
-
-            var extraction = extractor.Extract(content, Tenant.TenantId, $"document:{inspection.Sha256[..16]}");
-
-            if (!extraction.Succeeded)
-            {
-                artifact.Status = Domain.Documents.DocumentProcessingStatus.Failed;
-                artifact.RejectionReason = extraction.FailureReason;
-                await db.SaveChangesAsync();
-
-                _message = $"Stored, but extraction failed: {extraction.FailureReason}";
-                _messageIsError = true;
-                await LoadAsync();
-                return;
-            }
-
-            var invoice = extraction.Invoice!;
-            invoice.PrimaryDocumentArtifactId = artifact.Id;
-
-            if (extraction.Customer is { } customer)
-            {
-                db.Customers.Add(customer);
-            }
-
-            invoice.Customer = null;
-            db.Invoices.Add(invoice);
-
-            foreach (var line in extraction.Lines)
-            {
-                line.InvoiceId = invoice.Id;
-                db.InvoiceLines.Add(line);
-            }
-
-            artifact.InvoiceId = invoice.Id;
-            artifact.Status = Domain.Documents.DocumentProcessingStatus.Extracted;
-
-            await db.SaveChangesAsync();
-
-            await Processing.ProcessAsync(invoice.Id);
-
-            _message = $"Extracted deterministically ({extraction.Method}) into invoice " +
-                       $"{invoice.InvoiceNumber ?? invoice.Id.ToString()[..8]}, and validated.";
-            _messageIsError = false;
         }
         catch (Exception ex)
         {

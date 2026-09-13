@@ -1,6 +1,6 @@
 # Testing
 
-221 tests: 192 unit and 29 integration. Every integration test runs against a real PostgreSQL.
+227 tests: 192 unit and 35 integration. Every integration test runs against a real PostgreSQL.
 
 ## What each layer proves
 
@@ -50,7 +50,7 @@ invoice.
 
 ## Tests that earned their keep
 
-Six real defects were found by tests or by running the application, not by reading code:
+Seven real defects were found by tests or by running the application, not by reading code:
 
 1. A zero-rate tax match was given full confidence. Zero tax is structurally ambiguous.
 2. `BexioConnection.HasUsableRefreshToken` read the wall clock, disagreeing with the injected clock.
@@ -62,6 +62,8 @@ Six real defects were found by tests or by running the application, not by readi
    clients saw a silently truncated body.
 6. The outbox worker wrote audit events with an empty tenant id, making the records that say money was
    posted invisible to their owner.
+7. Document ingestion lived in a Razor code-behind with no API endpoint, so the path that decides
+   whether a file is safe was unreachable by a test. It is now a service shared by the UI and the API.
 
 Each has a regression test.
 

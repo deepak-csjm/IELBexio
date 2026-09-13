@@ -39,7 +39,8 @@ What this POC does not do. Stated so nobody discovers it during an evaluation.
 - **Partial payments are recorded but not reconciled against Bexio.**
 - **No bulk approval.** Each invoice is approved individually, which is deliberate for a POC handling
   money but would not scale to thousands of invoices.
-- **No email ingestion.** §11 lists email attachments; only direct upload is implemented.
+- **No email ingestion.** §11 lists email attachments; only direct upload (UI and `POST /api/documents`)
+  is implemented.
 
 ## Tax
 

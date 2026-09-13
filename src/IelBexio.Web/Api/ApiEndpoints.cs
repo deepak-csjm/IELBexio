@@ -1,6 +1,7 @@
 using IelBexio.Application.Abstractions;
 using IelBexio.Application.Bexio;
 using IelBexio.Application.Common;
+using IelBexio.Application.Documents;
 using IelBexio.Application.Invoices;
 using IelBexio.Application.Mapping;
 using IelBexio.Application.Sources;
@@ -13,6 +14,7 @@ using IelBexio.Domain.Sync;
 using IelBexio.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace IelBexio.Web.Api;
 
@@ -354,6 +356,57 @@ public static class ApiEndpoints
             await db.DocumentArtifacts.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, ct) is { } document
                 ? Results.Ok(document)
                 : Results.NotFound());
+
+        // Upload. Shares one service with the UI so both behave identically — and so the ingestion
+        // path, which decides whether a file is safe, is reachable by a test.
+        group.MapPost("/", async (IFormFile file, IDocumentIngestionService ingestion, IOptions<FileSecurityOptions> fileOptions, CancellationToken ct) =>
+        {
+            if (file.Length == 0)
+            {
+                return Results.Problem(title: "EMPTY_FILE", detail: "The uploaded file is empty.", statusCode: 400);
+            }
+
+            // Checked before reading the stream, so an oversized upload is refused rather than buffered.
+            if (file.Length > fileOptions.Value.MaxFileBytes)
+            {
+                return Results.Problem(
+                    title: "FILE_TOO_LARGE",
+                    detail: $"The file is {file.Length} bytes, above the {fileOptions.Value.MaxFileBytes} byte limit.",
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+
+            using var buffer = new MemoryStream();
+            await using (var stream = file.OpenReadStream())
+            {
+                await stream.CopyToAsync(buffer, ct);
+            }
+
+            var result = await ingestion.IngestAsync(buffer.ToArray(), file.FileName, file.ContentType, ct);
+
+            if (result.Failed)
+            {
+                return Results.Problem(title: result.ErrorCode, detail: result.ErrorMessage, statusCode: StatusFor(result.ErrorCode));
+            }
+
+            // Enums are projected as names, consistently with every other endpoint here: a client
+            // reading "Rejected" needs no copy of our enum ordering, and adding a member cannot
+            // silently change what an existing value means.
+            var ingested = result.Value!;
+            return Results.Ok(new
+            {
+                ingested.DocumentId,
+                Status = ingested.Status.ToString(),
+                ingested.Sha256,
+                ingested.ContentType,
+                Kind = ingested.Kind.ToString(),
+                ingested.InvoiceId,
+                ExtractionMethod = ingested.ExtractionMethod?.ToString(),
+                ingested.Message,
+                ingested.DuplicateOfDocumentId,
+            });
+        })
+        .DisableAntiforgery()
+        .WithSummary("Ingests a document: signature-based validation, hashing, deduplication, storage and deterministic extraction.");
 
         // The bytes are streamed through this authorised endpoint rather than exposed by a URL, so
         // there is never a permanent public document link (§25).

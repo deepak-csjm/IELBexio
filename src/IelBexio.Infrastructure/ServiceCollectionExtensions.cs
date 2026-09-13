@@ -105,6 +105,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<BexioPreflightService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IInvoiceProcessingService, InvoiceProcessingService>();
+        services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
         services.AddScoped<IReviewService, ReviewService>();
         services.AddScoped<IApprovalService, ApprovalService>();
         services.AddScoped<IInvoiceSynchronizationService, InvoiceSynchronizationService>();
