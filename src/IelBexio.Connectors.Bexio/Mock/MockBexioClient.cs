@@ -59,6 +59,9 @@ public sealed class MockBexioClient : IBexioClient
 
     public string ModeName => "Mock (no Bexio account contacted)";
 
+    /// <summary>No OAuth connection exists or is needed: there is no Bexio account behind the mock.</summary>
+    public bool RequiresAuthorizedConnection => false;
+
     /// <summary>Number of invoices the mock has actually created. Tests assert on this for duplicate prevention.</summary>
     public int CreatedInvoiceCount => _invoices.Count;
 

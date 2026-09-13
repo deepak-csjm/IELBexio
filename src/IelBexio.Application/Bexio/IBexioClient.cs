@@ -112,6 +112,17 @@ public interface IBexioClient
     /// <summary>Human-readable name of the active implementation, surfaced in the UI ("Mock" / "Bexio API").</summary>
     string ModeName { get; }
 
+    /// <summary>
+    /// Whether this implementation needs an authorised OAuth connection before it can be used.
+    /// <para>
+    /// The live client does; the mock does not, because there is no Bexio account behind it. Pre-flight
+    /// asks the client rather than assuming, so that switching modes really does require no change to
+    /// workflow logic (§5) — the alternative is a mode check scattered through the pipeline, which is
+    /// exactly the coupling the adapter boundary exists to prevent.
+    /// </para>
+    /// </summary>
+    bool RequiresAuthorizedConnection { get; }
+
     Task<BexioCompanyInfo> GetCompanyInfoAsync(CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<BexioTax>> GetTaxesAsync(CancellationToken cancellationToken = default);

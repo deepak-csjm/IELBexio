@@ -7,13 +7,15 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Azure.Storage.Blobs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\IelBexio.Domain\IelBexio.Domain.csproj" />
     <ProjectReference Include="..\IelBexio.Application\IelBexio.Application.csproj" />
+    <ProjectReference Include="..\IelBexio.Ai\IelBexio.Ai.csproj" />
+    <ProjectReference Include="..\IelBexio.Connectors.Bexio\IelBexio.Connectors.Bexio.csproj" />
+    <ProjectReference Include="..\IelBexio.Connectors.Shopify\IelBexio.Connectors.Shopify.csproj" />
+    <ProjectReference Include="..\IelBexio.Connectors.Amazon\IelBexio.Connectors.Amazon.csproj" />
   </ItemGroup>
 </Project>

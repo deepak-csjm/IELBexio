@@ -49,6 +49,9 @@ public sealed class BexioApiClient : IBexioClient
 
     public string ModeName => $"Bexio API ({_options.ApiBaseUrl})";
 
+    /// <summary>Every call carries a bearer token, so an authorised connection is mandatory.</summary>
+    public bool RequiresAuthorizedConnection => true;
+
     // ---- Reads -----------------------------------------------------------------------------------
 
     public async Task<BexioCompanyInfo> GetCompanyInfoAsync(CancellationToken cancellationToken = default)
