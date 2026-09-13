@@ -145,12 +145,44 @@ Mapped onto the §20 taxonomy, which decides retryability:
 | network, timeout | `Network` | yes |
 | unparseable response | `Permanent` | no |
 
-## What must be done before production
+## Verifying it, once a licence exists
 
-1. Verify every entry in `BexioEndpoints` against current official documentation, and set its
-   `VerificationStatus` to `VerifiedAgainstOfficialDocs`.
-2. Connect a sandbox and run the contract tests against it.
-3. Confirm the scope list — particularly `accounting`.
-4. Confirm rate-limit headers and 429 semantics.
-5. Determine whether Bexio honours an idempotency header. The database-level guard is the real
-   defence and does not depend on it, but knowing would allow a second layer.
+The markers above are only useful if turning them into facts is easy — otherwise the verification never
+happens and they become decoration. So it is one command:
+
+```bash
+# Read-only. Probes every endpoint, field name and scope, and reports which assumptions hold.
+BASE_URL=http://localhost:5188 scripts/verify-bexio.sh
+
+# Additionally verifies invoice creation. SANDBOX ONLY — it creates one real invoice,
+# titled CONFORMANCE-CHECK-DELETE-ME, and requires typed confirmation.
+scripts/verify-bexio.sh --allow-write
+```
+
+Point the application at a sandbox first (`Bexio:Mode=Api`, client id and secret configured, OAuth
+connection completed), then run it. It writes a Markdown report and a JSON report to `artifacts/`.
+
+The report is ordered worst-first and, for each refuted assumption, names the exact file to change. It
+distinguishes three outcomes deliberately:
+
+| Outcome | Meaning |
+|---|---|
+| **Refuted** | The assumption is wrong. This is the work list. A 404 means the path is wrong; a 422 means the payload shape is wrong; an unparseable response means the DTO is wrong. |
+| **Inconclusive** | Could not be determined — usually a 403 (the path may still be right, the scope is missing) or an empty account. Not a failure. |
+| **Confirmed** | Observed working. Promote the marker to `VerifiedAgainstOfficialDocs`. |
+
+One probe deserves particular mention: if every tax parses with a rate of zero, that is reported as
+**refuted** rather than as "this account has only zero-rated taxes". A silently-zeroed tax rate is the
+kind of failure nothing else would catch, and it would book every invoice with no VAT.
+
+Running it against the mock exercises the harness but verifies nothing about the real API — and the
+report says so in bold rather than letting a green run be mistaken for evidence.
+
+### Still to confirm by hand
+
+The harness cannot check everything. These remain manual:
+
+1. Rate-limit headers and 429 semantics.
+2. Whether Bexio honours an idempotency header. The database-level guard is the real defence and does
+   not depend on it, but knowing would allow a second layer.
+3. Whether a write scope really implies its read scope.

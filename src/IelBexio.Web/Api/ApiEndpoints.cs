@@ -1,6 +1,7 @@
 using IelBexio.Application.Abstractions;
 using IelBexio.Application.Bexio;
 using IelBexio.Application.Common;
+using IelBexio.Connectors.Bexio.Conformance;
 using IelBexio.Application.Documents;
 using IelBexio.Application.Invoices;
 using IelBexio.Application.Mapping;
@@ -127,6 +128,36 @@ public static class ApiEndpoints
         group.MapPost("/bexio/disconnect", async (IBexioAuthorizationService auth, CancellationToken ct) =>
             FromResult(await auth.DisconnectAsync(ct)))
             .WithSummary("Disconnects Bexio and clears the stored token material.");
+
+        // Verifies every endpoint, field-name and scope assumption in the Bexio adapter against the
+        // connected account, and reports which hold. This is the one-command version of the manual
+        // verification described in docs/bexio-integration.md.
+        //
+        // Read-only unless allowWrite=true is passed explicitly: a diagnostic must not create an
+        // invoice in someone's accounting system as a side effect.
+        group.MapPost("/bexio/conformance", async (
+            BexioConformanceCheck check,
+            ICurrentUser user,
+            bool? allowWrite,
+            string? format,
+            CancellationToken ct) =>
+        {
+            if (!user.IsInRole(AppRoles.Admin) && !user.IsInRole(AppRoles.IntegrationManager))
+            {
+                return Results.Problem(
+                    title: "FORBIDDEN",
+                    detail: "Running the conformance check requires the Admin or IntegrationManager role.",
+                    statusCode: 403);
+            }
+
+            var report = await check.RunAsync(
+                new BexioConformanceOptions { AllowWriteProbe = allowWrite == true }, ct);
+
+            return string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
+                ? Results.Text(ConformanceReportWriter.ToMarkdown(report), "text/markdown")
+                : Results.Ok(report);
+        })
+        .WithSummary("Verifies the Bexio adapter's unverified assumptions against the connected account.");
     }
 
     // ---- Imports -----------------------------------------------------------------------------

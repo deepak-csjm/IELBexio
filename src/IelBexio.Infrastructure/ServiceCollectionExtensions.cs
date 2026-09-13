@@ -16,6 +16,7 @@ using IelBexio.Connectors.Amazon.Normalization;
 using IelBexio.Connectors.Bexio.Api;
 using IelBexio.Connectors.Bexio.Auth;
 using IelBexio.Connectors.Bexio.Configuration;
+using Conformance = IelBexio.Connectors.Bexio.Conformance;
 using IelBexio.Connectors.Bexio.Mock;
 using IelBexio.Connectors.Shopify;
 using IelBexio.Connectors.Shopify.Api;
@@ -148,6 +149,14 @@ public static class ServiceCollectionExtensions
         });
 
         services.AddScoped<IBexioTokenProvider>(sp => sp.GetRequiredService<BexioTokenService>());
+
+        // The conformance check works against whichever IBexioClient is configured. Run against the
+        // mock it proves the harness itself; run against the API it verifies the real assumptions.
+        services.AddScoped(sp => new Conformance.BexioConformanceCheck(
+            sp.GetRequiredService<IBexioClient>(),
+            sp.GetRequiredService<IBexioTokenProvider>(),
+            sp.GetRequiredService<IOptions<BexioOptions>>().Value,
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Conformance.BexioConformanceCheck>>()));
         services.AddScoped<IBexioAuthorizationService>(sp => sp.GetRequiredService<BexioTokenService>());
 
         var mode = configuration[$"{BexioOptions.SectionName}:Mode"] ?? nameof(BexioMode.Mock);
