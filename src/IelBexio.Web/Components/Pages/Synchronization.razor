@@ -1,0 +1,190 @@
+@page "/synchronization"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Abstractions.IClock Clock
+@inject IelBexio.Application.Invoices.IReconciliationService Reconciliation
+@inject IelBexio.Application.Abstractions.ICurrentUser CurrentUser
+
+<PageTitle>Synchronization</PageTitle>
+
+<h1>Synchronization</h1>
+<p class="page-subtitle">The outbox queue, synchronisation attempts, and reconciliation against Bexio.</p>
+
+@if (_message is not null)
+{
+    <div class="banner @(_messageIsError ? "banner-error" : "banner-ok")">@_message</div>
+}
+
+<div class="card">
+    <div class="card-title">Reconciliation</div>
+    <p class="small muted">
+        Compares what this system believes it posted against what Bexio actually holds. A discrepancy is
+        flagged for a human; nothing is repaired automatically, because choosing which side is right is a
+        judgement rather than a rule.
+    </p>
+    <button class="btn" @onclick="ReconcileAsync" disabled="@_busy">Run reconciliation</button>
+</div>
+
+<h2>Outbox</h2>
+@if (_messages.Count == 0)
+{
+    <div class="card"><p class="muted">The outbox is empty.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>Created</th><th>Type</th><th>Status</th><th class="numeric">Attempts</th><th>Next attempt</th><th>Last error</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var message in _messages)
+        {
+            <tr>
+                <td class="nowrap small">@message.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td class="mono small">@message.MessageType</td>
+                <td>
+                    <StatusBadge Text="@message.Status.ToString()"
+                                 Tone="@(message.Status == Domain.Sync.OutboxStatus.Processed ? StatusBadge.StatusTone.Ok
+                                       : message.Status == Domain.Sync.OutboxStatus.DeadLettered ? StatusBadge.StatusTone.Error
+                                       : StatusBadge.StatusTone.Warning)" />
+                </td>
+                <td class="numeric">@message.AttemptCount</td>
+                <td class="nowrap small">@message.NextAttemptAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td class="small">
+                    @if (!string.IsNullOrWhiteSpace(message.LastError))
+                    {
+                        <div><span class="badge badge-error">@message.LastErrorCategory</span></div>
+                        <div class="muted">@message.LastError</div>
+                    }
+                </td>
+                <td>
+                    @if (message.Status == Domain.Sync.OutboxStatus.DeadLettered && CanRetry)
+                    {
+                        <button class="btn" @onclick="() => RetryAsync(message.Id)">Retry</button>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+<h2>Synchronisation attempts</h2>
+@if (_attempts.Count == 0)
+{
+    <div class="card"><p class="muted">No synchronisation has been attempted yet.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>Started</th><th>Operation</th><th>Status</th><th class="numeric">Attempts</th><th>Bexio id</th><th>Idempotency key</th><th>Error</th></tr></thead>
+        <tbody>
+        @foreach (var attempt in _attempts)
+        {
+            <tr>
+                <td class="nowrap small">@attempt.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td class="small">@attempt.Destination / @attempt.Operation</td>
+                <td>
+                    <StatusBadge Text="@attempt.Status.ToString()"
+                                 Tone="@(attempt.Status == Domain.Sync.SyncAttemptStatus.Succeeded ? StatusBadge.StatusTone.Ok
+                                       : attempt.Status == Domain.Sync.SyncAttemptStatus.PermanentlyFailed ? StatusBadge.StatusTone.Error
+                                       : StatusBadge.StatusTone.Warning)" />
+                </td>
+                <td class="numeric">@attempt.AttemptCount</td>
+                <td class="mono small">@(attempt.ExternalId ?? "—")</td>
+                <td class="mono small" title="@attempt.IdempotencyKey">@Truncate(attempt.IdempotencyKey)</td>
+                <td class="small">
+                    @if (attempt.ErrorCategory != Domain.Sync.SyncErrorCategory.None)
+                    {
+                        <div><span class="badge badge-error">@attempt.ErrorCategory</span></div>
+                        <div class="muted">@attempt.ErrorMessage</div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@if (_findings.Count > 0)
+{
+    <h2>Reconciliation findings</h2>
+    <div class="card">
+        @foreach (var finding in _findings)
+        {
+            <div class="issue issue-warning">@finding</div>
+        }
+    </div>
+}
+
+@code {
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+    private List<Domain.Sync.OutboxMessage> _messages = [];
+    private List<Domain.Sync.SynchronizationAttempt> _attempts = [];
+    private List<string> _findings = [];
+
+    private bool CanRetry => CurrentUser.IsInRole(AppRolesShim.Admin) || CurrentUser.IsInRole(AppRolesShim.IntegrationManager);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private static string Truncate(string value) => value.Length <= 28 ? value : value[..28] + "…";
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+        var tenantId = Tenant.TenantId;
+
+        _messages = await db.OutboxMessages.Where(m => m.TenantId == tenantId)
+            .OrderByDescending(m => m.CreatedAt).Take(50).ToListAsync();
+
+        _attempts = await db.SynchronizationAttempts.Where(a => a.TenantId == tenantId)
+            .OrderByDescending(a => a.StartedAt).Take(50).ToListAsync();
+    }
+
+    private async Task RetryAsync(Guid messageId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        var message = await db.OutboxMessages.FirstOrDefaultAsync(m => m.Id == messageId);
+        if (message is null)
+        {
+            return;
+        }
+
+        // A manual retry re-queues an already-approved invoice. The approval and its fingerprint are
+        // re-checked at dispatch, so this cannot be used to post something that was never approved.
+        message.Status = Domain.Sync.OutboxStatus.Pending;
+        message.NextAttemptAt = Clock.UtcNow;
+        message.AttemptCount = 0;
+        await db.SaveChangesAsync();
+
+        _message = "The message has been re-queued. Approval and pre-flight are re-checked before it is sent.";
+        _messageIsError = false;
+        await LoadAsync();
+    }
+
+    private async Task ReconcileAsync()
+    {
+        _busy = true;
+        var result = await Reconciliation.ReconcileAsync();
+
+        if (result.Succeeded)
+        {
+            var summary = result.Value!;
+            _findings = summary.Findings.ToList();
+            _message = $"Checked {summary.Checked}: {summary.Matched} matched, {summary.Missing} missing in Bexio, {summary.Mismatched} mismatched.";
+            _messageIsError = summary.Missing > 0 || summary.Mismatched > 0;
+        }
+        else
+        {
+            _message = $"{result.ErrorCode}: {result.ErrorMessage}";
+            _messageIsError = true;
+        }
+
+        _busy = false;
+        await LoadAsync();
+    }
+}

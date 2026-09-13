@@ -91,11 +91,14 @@ public sealed class OutboxHostedService : BackgroundService
         var db = provider.GetRequiredService<Persistence.AppDbContext>();
         db.SuppressTenantFilter = true;
 
+        var tenantContext = provider.GetService<AmbientTenantContext>();
+
         var processor = new OutboxProcessor(
             provider.GetRequiredService<IOutboxStore>(),
             provider.GetRequiredService<IInvoiceSynchronizationService>(),
             _options,
-            provider.GetRequiredService<IClock>());
+            provider.GetRequiredService<IClock>(),
+            applyTenant: tenantId => tenantContext?.Set(tenantId));
 
         var result = await processor.ProcessBatchAsync(cancellationToken);
 

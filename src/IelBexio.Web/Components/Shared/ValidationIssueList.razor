@@ -1,0 +1,45 @@
+@if (Issues is { Count: > 0 })
+{
+    <div>
+        @foreach (var issue in Issues.OrderByDescending(i => i.Severity))
+        {
+            <div class="issue @CssFor(issue.Severity)">
+                <div class="row">
+                    <strong>@Label(issue.Severity)</strong>
+                    <span class="issue-code">@issue.Code</span>
+                    @if (!string.IsNullOrWhiteSpace(issue.FieldPath))
+                    {
+                        <span class="issue-code">@issue.FieldPath</span>
+                    }
+                </div>
+                <div>@issue.Message</div>
+                @if (!string.IsNullOrWhiteSpace(issue.Detail))
+                {
+                    <div class="small muted">@issue.Detail</div>
+                }
+            </div>
+        }
+    </div>
+}
+else
+{
+    <p class="muted">No validation issues.</p>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ValidationIssue>? Issues { get; set; }
+
+    private static string CssFor(ValidationSeverity severity) => severity switch
+    {
+        ValidationSeverity.Error => "issue-error",
+        ValidationSeverity.Warning => "issue-warning",
+        _ => "issue-info",
+    };
+
+    private static string Label(ValidationSeverity severity) => severity switch
+    {
+        ValidationSeverity.Error => "✕ Blocking",
+        ValidationSeverity.Warning => "⚠ Review",
+        _ => "○ Info",
+    };
+}

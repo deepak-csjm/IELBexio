@@ -1,0 +1,180 @@
+@page "/connections"
+@page "/bexio"
+@rendermode InteractiveServer
+@inject IelBexio.Application.Sources.ISourceConnectorRegistry Registry
+@inject IelBexio.Application.Bexio.IBexioClient BexioClient
+@inject IelBexio.Application.Bexio.IBexioTokenProvider Tokens
+@inject IelBexio.Application.Mapping.IBexioReferenceSyncService ReferenceSync
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+
+<PageTitle>Connections</PageTitle>
+
+<h1>Connections</h1>
+<p class="page-subtitle">Where data comes from, and where approved data goes.</p>
+
+@if (_message is not null)
+{
+    <div class="banner @(_messageIsError ? "banner-error" : "banner-ok")">@_message</div>
+}
+
+<div class="card">
+    <div class="card-title">Bexio (destination)</div>
+
+    <div class="field-row">
+        <span class="field-label">Mode</span>
+        <span class="field-value">
+            @BexioClient.ModeName
+            @if (!BexioClient.RequiresAuthorizedConnection)
+            {
+                <div class="small muted">
+                    No Bexio account is contacted. Reference data and created invoices are synthetic, and
+                    their identifiers are deliberately non-numeric so they cannot be mistaken for real ones.
+                </div>
+            }
+        </span>
+    </div>
+
+    <div class="field-row">
+        <span class="field-label">Status</span>
+        <span class="field-value">
+            @if (!BexioClient.RequiresAuthorizedConnection)
+            {
+                <StatusBadge Text="Mock — no authorisation needed" Tone="StatusBadge.StatusTone.Info" />
+            }
+            else if (_connected)
+            {
+                <StatusBadge Text="Connected" Tone="StatusBadge.StatusTone.Ok" />
+            }
+            else
+            {
+                <StatusBadge Text="Not connected" Tone="StatusBadge.StatusTone.Error" />
+                <div class="small muted">
+                    Connect through the OAuth authorization-code flow. No invoice can be synchronised until then.
+                </div>
+            }
+        </span>
+    </div>
+
+    @if (_grantedScopes.Count > 0)
+    {
+        <div class="field-row">
+            <span class="field-label">Granted scopes</span>
+            <span class="field-value mono small">@string.Join(" ", _grantedScopes)</span>
+        </div>
+    }
+
+    <div class="field-row">
+        <span class="field-label">Reference data</span>
+        <span class="field-value">
+            @_taxCount taxes, @_accountCount accounts, @_contactCount contacts, @_articleCount articles
+            @if (_lastRefresh is { } refreshed)
+            {
+                <div class="small muted">Last refreshed @refreshed.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+            }
+            else
+            {
+                <div class="small muted">Never refreshed. Tax mappings are derived from this, so refresh before importing.</div>
+            }
+        </span>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-primary" @onclick="RefreshReferenceAsync" disabled="@_busy">Refresh Bexio reference data</button>
+    </div>
+
+    @if (_warnings.Count > 0)
+    {
+        <div style="margin-top:12px">
+            <h3>Warnings from the last refresh</h3>
+            @foreach (var warning in _warnings)
+            {
+                <div class="issue issue-warning">@warning</div>
+            }
+        </div>
+    }
+</div>
+
+<h2>Sources</h2>
+@foreach (var connector in Registry.All())
+{
+    <div class="card">
+        <div class="card-title">
+            @connector.SourceSystem
+            <span class="badge @(connector.ModeName.StartsWith("Live", StringComparison.Ordinal) ? "badge-error" : "badge-info")">
+                @connector.ModeName
+            </span>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Capabilities</span>
+            <span class="field-value small mono">@connector.Capabilities</span>
+        </div>
+
+        <div class="field-row">
+            <span class="field-label">Documented restrictions</span>
+            <span class="field-value">
+                <ul class="small" style="margin:0; padding-left:18px">
+                    @foreach (var restriction in connector.DocumentedRestrictions)
+                    {
+                        <li>@restriction</li>
+                    }
+                </ul>
+            </span>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _connected;
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+    private IReadOnlyList<string> _grantedScopes = [];
+    private List<string> _warnings = [];
+    private int _taxCount, _accountCount, _contactCount, _articleCount;
+    private DateTimeOffset? _lastRefresh;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _connected = await Tokens.IsConnectedAsync();
+        _grantedScopes = await Tokens.GetGrantedScopesAsync();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+        var tenantId = Tenant.TenantId;
+
+        var reference = db.BexioReferenceItems.Where(r => r.TenantId == tenantId);
+        _taxCount = await reference.CountAsync(r => r.Kind == Domain.Bexio.BexioReferenceKind.Tax);
+        _accountCount = await reference.CountAsync(r => r.Kind == Domain.Bexio.BexioReferenceKind.Account);
+        _contactCount = await reference.CountAsync(r => r.Kind == Domain.Bexio.BexioReferenceKind.Contact);
+        _articleCount = await reference.CountAsync(r => r.Kind == Domain.Bexio.BexioReferenceKind.Article);
+
+        _lastRefresh = (await db.BexioConnections.FirstOrDefaultAsync(c => c.TenantId == tenantId))?.LastReferenceRefreshAt;
+    }
+
+    private async Task RefreshReferenceAsync()
+    {
+        _busy = true;
+        var result = await ReferenceSync.RefreshAsync();
+
+        if (result.Succeeded)
+        {
+            var summary = result.Value!;
+            _warnings = summary.Warnings.ToList();
+            _message = $"Discovered {summary.Taxes} taxes and {summary.Accounts} accounts; " +
+                       $"{summary.TaxMappingsCreated} tax mapping(s) created, {summary.TaxMappingsUpdated} updated.";
+            _messageIsError = false;
+        }
+        else
+        {
+            _message = $"{result.ErrorCode}: {result.ErrorMessage}";
+            _messageIsError = true;
+        }
+
+        _busy = false;
+        await LoadAsync();
+    }
+}

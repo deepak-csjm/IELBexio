@@ -1,0 +1,205 @@
+@page "/tax-mapping"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Mapping.IMappingService Mappings
+@inject IelBexio.Application.Abstractions.ICurrentUser CurrentUser
+
+<PageTitle>Tax mapping</PageTitle>
+
+<h1>Tax and account mapping</h1>
+<p class="page-subtitle">
+    Bexio identifiers are discovered through the API, never hardcoded. A mapping links our internal tax
+    code to whichever Bexio tax the connected account actually has.
+</p>
+
+@if (_message is not null)
+{
+    <div class="banner banner-ok">@_message</div>
+}
+
+<h2>Tax mappings</h2>
+@if (_taxMappings.Count == 0)
+{
+    <div class="card">
+        <p class="muted">No tax mappings exist. Refresh the Bexio reference data on the Connections page to derive them.</p>
+    </div>
+}
+else
+{
+    <table>
+        <thead><tr><th>Internal code</th><th>Country</th><th class="numeric">Our rate</th><th>Bexio tax</th>
+            <th class="numeric">Bexio rate</th><th>Active in Bexio</th><th>Origin</th><th>Valid from</th></tr></thead>
+        <tbody>
+        @foreach (var mapping in _taxMappings)
+        {
+            <tr>
+                <td class="mono">@mapping.InternalTaxCode</td>
+                <td>@mapping.CountryCode</td>
+                <td class="numeric">@mapping.RatePercent.ToString("0.##")%</td>
+                <td>@(mapping.BexioTaxName ?? "—")<br /><span class="mono small muted">@mapping.BexioTaxId</span></td>
+                <td class="numeric">@(mapping.BexioTaxRatePercent?.ToString("0.##") ?? "—")%</td>
+                <td>
+                    @if (mapping.BexioTaxIsActive)
+                    {
+                        <StatusBadge Text="Active" Tone="StatusBadge.StatusTone.Ok" />
+                    }
+                    else
+                    {
+                        <StatusBadge Text="Inactive" Tone="StatusBadge.StatusTone.Error" Title="Pre-flight will refuse to post using this tax." />
+                    }
+                </td>
+                <td><span class="badge badge-info">@mapping.Origin</span></td>
+                <td class="small">@mapping.ValidFrom.ToString("yyyy-MM-dd")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+<h2>Account mappings</h2>
+<div class="card">
+    <p class="small muted">
+        Which Bexio revenue account each kind of line is booked to. Unset mappings block synchronisation
+        rather than defaulting to an account the system picked for you.
+    </p>
+
+    <table>
+        <thead><tr><th>Internal account code</th><th>Bexio account</th><th>Origin</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var accountCode in AccountCodes)
+        {
+            var mapping = _accountMappings.FirstOrDefault(m => m.InternalAccountCode == accountCode);
+            <tr>
+                <td class="mono">@accountCode</td>
+                <td>
+                    @if (mapping is null)
+                    {
+                        <StatusBadge Text="Not mapped" Tone="StatusBadge.StatusTone.Error" />
+                    }
+                    else
+                    {
+                        @($"{mapping.BexioAccountNumber} {mapping.BexioAccountName}")
+                        <span class="mono small muted"> @mapping.BexioAccountId</span>
+                    }
+                </td>
+                <td>
+                    @if (mapping is not null)
+                    {
+                        <span class="badge badge-info">@mapping.Origin</span>
+                    }
+                </td>
+                <td>
+                    @if (CanEdit && _bexioAccounts.Count > 0)
+                    {
+                        <div class="row">
+                            <select @bind="_selectedAccount[accountCode]" style="width:auto">
+                                <option value="">Choose a Bexio account…</option>
+                                @foreach (var account in _bexioAccounts)
+                                {
+                                    <option value="@account.BexioId">@account.Code @account.Name</option>
+                                }
+                            </select>
+                            <button class="btn" @onclick="() => SaveAccountAsync(accountCode)">Save</button>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<h2>Discovered Bexio taxes</h2>
+<div class="card">
+    <p class="small muted">Exactly what the connected Bexio account reports. Mappings can only point at these.</p>
+    @if (_bexioTaxes.Count == 0)
+    {
+        <p class="muted">Nothing discovered yet.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Bexio id</th><th>Name</th><th class="numeric">Rate</th><th>Active</th><th>Discovered</th></tr></thead>
+            <tbody>
+            @foreach (var tax in _bexioTaxes)
+            {
+                <tr>
+                    <td class="mono small">@tax.BexioId</td>
+                    <td>@tax.Name</td>
+                    <td class="numeric">@(tax.RatePercent?.ToString("0.##") ?? "—")%</td>
+                    <td>
+                        <StatusBadge Text="@(tax.IsActive ? "Active" : "Inactive")"
+                                     Tone="@(tax.IsActive ? StatusBadge.StatusTone.Ok : StatusBadge.StatusTone.Warning)" />
+                    </td>
+                    <td class="small">@tax.DiscoveredAt.ToString("yyyy-MM-dd HH:mm")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private static readonly string[] AccountCodes =
+    [
+        Domain.Mapping.InternalAccountCodes.RevenueGoods,
+        Domain.Mapping.InternalAccountCodes.RevenueShipping,
+        Domain.Mapping.InternalAccountCodes.RevenueDiscount,
+    ];
+
+    private List<Domain.Mapping.TaxMapping> _taxMappings = [];
+    private List<Domain.Mapping.AccountMapping> _accountMappings = [];
+    private List<Domain.Bexio.BexioReferenceItem> _bexioTaxes = [];
+    private List<Domain.Bexio.BexioReferenceItem> _bexioAccounts = [];
+    private readonly Dictionary<string, string> _selectedAccount = [];
+    private string? _message;
+
+    private bool CanEdit => CurrentUser.IsInRole(AppRolesShim.Admin) || CurrentUser.IsInRole(AppRolesShim.IntegrationManager);
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var code in AccountCodes)
+        {
+            _selectedAccount[code] = string.Empty;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+        var tenantId = Tenant.TenantId;
+
+        _taxMappings = await db.TaxMappings.Where(m => m.TenantId == tenantId && m.IsActive)
+            .OrderBy(m => m.CountryCode).ThenBy(m => m.InternalTaxCode).ToListAsync();
+
+        _accountMappings = await db.AccountMappings.Where(m => m.TenantId == tenantId && m.IsActive).ToListAsync();
+
+        _bexioTaxes = await db.BexioReferenceItems
+            .Where(r => r.TenantId == tenantId && r.Kind == Domain.Bexio.BexioReferenceKind.Tax)
+            .OrderByDescending(r => r.RatePercent).ToListAsync();
+
+        _bexioAccounts = await db.BexioReferenceItems
+            .Where(r => r.TenantId == tenantId && r.Kind == Domain.Bexio.BexioReferenceKind.Account && r.IsActive)
+            .OrderBy(r => r.Code).ToListAsync();
+    }
+
+    private async Task SaveAccountAsync(string code)
+    {
+        if (!_selectedAccount.TryGetValue(code, out var accountId) || string.IsNullOrWhiteSpace(accountId))
+        {
+            return;
+        }
+
+        var account = _bexioAccounts.First(a => a.BexioId == accountId);
+        await Mappings.UpsertAccountMappingAsync(
+            code, account.BexioId, account.Code, account.Name,
+            Domain.Mapping.MappingOrigin.Manual, CurrentUser.UserId);
+
+        _message = $"'{code}' now maps to Bexio account {account.Code} {account.Name}.";
+        await LoadAsync();
+    }
+}

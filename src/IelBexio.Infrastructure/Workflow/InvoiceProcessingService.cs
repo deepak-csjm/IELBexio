@@ -129,6 +129,13 @@ public sealed class InvoiceProcessingService : IInvoiceProcessingService
             }
         }
 
+        // Persist the assessments BEFORE reading them back. Querying first would execute SQL against the
+        // database and miss everything just added in memory, so on an invoice's first pass the tax
+        // warnings below would silently not be raised — and an invoice with an undetermined tax would be
+        // routed to Validated instead of NeedsReview. Pre-flight would still have blocked the posting,
+        // but a reviewer would never have been told to look.
+        await _db.SaveChangesAsync(cancellationToken);
+
         // ---- Deterministic validation -----------------------------------------------------------
         var report = _validator.Validate(invoice, lines);
 

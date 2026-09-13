@@ -1,0 +1,188 @@
+@page "/invoices"
+@page "/review"
+@page "/approvals"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject NavigationManager Navigation
+
+<PageTitle>@Title</PageTitle>
+
+<h1>@Title</h1>
+<p class="page-subtitle">@Subtitle</p>
+
+<div class="card">
+    <div class="row">
+        <label class="small muted" for="state">Workflow state</label>
+        <select id="state" @bind="_stateFilter" @bind:after="ReloadAsync" style="width:auto">
+            <option value="">All states</option>
+            @foreach (var state in Enum.GetValues<InvoiceWorkflowState>())
+            {
+                <option value="@state">@state</option>
+            }
+        </select>
+        <button class="btn" @onclick="ReloadAsync">Refresh</button>
+    </div>
+</div>
+
+@if (_rows.Count == 0)
+{
+    <div class="card"><p class="muted">No invoices match this filter.</p></div>
+}
+else
+{
+    <table>
+        <thead>
+        <tr>
+            <th>Invoice</th>
+            <th>Source</th>
+            <th>Customer</th>
+            <th>Date</th>
+            <th class="numeric">Net</th>
+            <th class="numeric">Tax</th>
+            <th class="numeric">Total</th>
+            <th>State</th>
+            <th>Signals</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>
+                    <div class="stack">
+                        <strong>@(row.InvoiceNumber ?? "(no number)")</strong>
+                        <span class="small muted mono">@row.SourceDocumentId</span>
+                    </div>
+                </td>
+                <td><span class="badge badge-info">@row.SourceSystem</span></td>
+                <td>
+                    @(row.CustomerName ?? "—")
+                    @if (row.CustomerAnonymised)
+                    {
+                        <div><StatusBadge Text="Identity unavailable" Tone="StatusBadge.StatusTone.Warning" /></div>
+                    }
+                </td>
+                <td class="nowrap small">@(row.InvoiceDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                <td class="numeric"><MoneyText Amount="row.Subtotal" Currency="row.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="row.Tax" Currency="row.Currency" /></td>
+                <td class="numeric"><strong><MoneyText Amount="row.Total" Currency="row.Currency" /></strong></td>
+                <td><WorkflowBadge State="row.State" /></td>
+                <td>
+                    <div class="stack">
+                        @if (row.DuplicateOfExisting)
+                        {
+                            <StatusBadge Text="Duplicate" Tone="StatusBadge.StatusTone.Warning" Title="Another version of this source document exists." />
+                        }
+                        @if (row.PendingProposals > 0)
+                        {
+                            <StatusBadge Text="@($"{row.PendingProposals} AI proposal(s)")" Tone="StatusBadge.StatusTone.Accent" />
+                        }
+                        @if (row.UnverifiedTax > 0)
+                        {
+                            <StatusBadge Text="@($"{row.UnverifiedTax} tax unverified")" Tone="StatusBadge.StatusTone.Warning" />
+                        }
+                        @if (!string.IsNullOrEmpty(row.BexioInvoiceId))
+                        {
+                            <span class="small mono muted">Bexio: @row.BexioInvoiceId</span>
+                        }
+                    </div>
+                </td>
+                <td><a class="btn" href="@($"invoices/{row.Id}")">Open</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _stateFilter = string.Empty;
+    private List<Row> _rows = [];
+
+    private string Title => Navigation.Uri.Contains("/review", StringComparison.Ordinal) ? "Review queue"
+        : Navigation.Uri.Contains("/approvals", StringComparison.Ordinal) ? "Approvals"
+        : "Invoices";
+
+    private string Subtitle => Title switch
+    {
+        "Review queue" => "Records where deterministic validation raised something a human should look at.",
+        "Approvals" => "Verified records awaiting an explicit approval decision. Nothing reaches Bexio until one is given.",
+        _ => "All canonical invoices, whatever their state.",
+    };
+
+    private sealed record Row(
+        Guid Id, string? InvoiceNumber, string SourceDocumentId, string SourceSystem, string? CustomerName,
+        bool CustomerAnonymised, DateOnly? InvoiceDate, decimal Subtotal, decimal Tax, decimal Total,
+        string Currency, InvoiceWorkflowState State, string? BexioInvoiceId,
+        int PendingProposals, int UnverifiedTax, bool DuplicateOfExisting);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The route determines the default filter, so "Review queue" and "Approvals" are genuinely
+        // different worklists rather than the same table with a different heading.
+        _stateFilter = Title switch
+        {
+            "Review queue" => nameof(InvoiceWorkflowState.NeedsReview),
+            "Approvals" => nameof(InvoiceWorkflowState.ReadyForApproval),
+            _ => string.Empty,
+        };
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+        var tenantId = Tenant.TenantId;
+
+        var query = db.Invoices.AsNoTracking().Where(i => i.TenantId == tenantId);
+
+        if (!string.IsNullOrEmpty(_stateFilter) && Enum.TryParse<InvoiceWorkflowState>(_stateFilter, out var state))
+        {
+            query = query.Where(i => i.WorkflowState == state);
+        }
+
+        var invoices = await query.OrderByDescending(i => i.CreatedAt).Take(200).ToListAsync();
+        var ids = invoices.Select(i => i.Id).ToList();
+
+        var proposals = await db.AiProposals.AsNoTracking()
+            .Where(p => ids.Contains(p.EntityId) && p.Status == Domain.Ai.AiProposalStatus.Pending)
+            .GroupBy(p => p.EntityId)
+            .Select(g => new { EntityId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.EntityId, x => x.Count);
+
+        var unverified = await db.TaxAssessments.AsNoTracking()
+            .Where(a => ids.Contains(a.InvoiceId) && !a.HumanVerified && a.ConfidenceSignal < 0.8m)
+            .GroupBy(a => a.InvoiceId)
+            .Select(g => new { InvoiceId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.InvoiceId, x => x.Count);
+
+        var customerIds = invoices.Where(i => i.CustomerId.HasValue).Select(i => i.CustomerId!.Value).Distinct().ToList();
+        var customers = await db.Customers.AsNoTracking()
+            .Where(c => customerIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id);
+
+        // Another canonical row for the same source document (at a different version) is worth a
+        // visible warning: it usually means the source edited an order we may already have booked.
+        var documentCounts = await db.Invoices.AsNoTracking()
+            .Where(i => i.TenantId == tenantId)
+            .GroupBy(i => new { i.SourceSystem, i.SourceDocumentId })
+            .Select(g => new { g.Key.SourceSystem, g.Key.SourceDocumentId, Count = g.Count() })
+            .ToListAsync();
+
+        _rows = invoices.Select(i =>
+        {
+            var customer = i.CustomerId is { } cid && customers.TryGetValue(cid, out var c) ? c : null;
+            var duplicate = documentCounts.Any(d => d.SourceSystem == i.SourceSystem && d.SourceDocumentId == i.SourceDocumentId && d.Count > 1);
+
+            return new Row(
+                i.Id, i.InvoiceNumber, i.SourceDocumentId, i.SourceSystem.ToString(),
+                customer?.DisplayName, customer?.IsAnonymised ?? false,
+                i.InvoiceDate, i.SubtotalAmount, i.TaxAmount, i.TotalAmount, i.Currency,
+                i.WorkflowState, i.BexioInvoiceId,
+                proposals.GetValueOrDefault(i.Id), unverified.GetValueOrDefault(i.Id), duplicate);
+        }).ToList();
+    }
+}

@@ -1,0 +1,99 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject IConfiguration Configuration
+@inject IWebHostEnvironment Environment
+@inject IelBexio.Application.Abstractions.ICurrentUser CurrentUser
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Bexio.IBexioClient BexioClient
+@inject IelBexio.Application.Ai.IAiService AiService
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Settings</h1>
+<p class="page-subtitle">What this deployment is actually configured to do. Secrets are never displayed.</p>
+
+@if (IsDevelopmentIdentity)
+{
+    <div class="banner banner-warn">
+        <strong>Development identity is active.</strong> Users and roles come from configuration or a request
+        header, not from Microsoft Entra ID. This is not authentication and must never be enabled outside
+        local development — the application refuses to start in this mode in any other environment.
+    </div>
+}
+
+<div class="card">
+    <div class="card-title">Session</div>
+    <div class="field-row"><span class="field-label">Signed in as</span><span class="field-value">@CurrentUser.UserId</span></div>
+    <div class="field-row">
+        <span class="field-label">Roles</span>
+        <span class="field-value">
+            @foreach (var role in Roles)
+            {
+                <span class="badge @(CurrentUser.IsInRole(role) ? "badge-ok" : "badge-info")">
+                    @(CurrentUser.IsInRole(role) ? "✓" : "○") @role
+                </span>
+            }
+        </span>
+    </div>
+    <div class="field-row"><span class="field-label">Tenant</span><span class="field-value mono small">@Tenant.TenantId</span></div>
+    <div class="field-row"><span class="field-label">Environment</span><span class="field-value">@Environment.EnvironmentName</span></div>
+</div>
+
+<div class="card">
+    <div class="card-title">Integrations</div>
+    <div class="field-row"><span class="field-label">Bexio</span><span class="field-value">@BexioClient.ModeName</span></div>
+    <div class="field-row"><span class="field-label">Shopify</span><span class="field-value">@(Configuration["Shopify:Mode"] ?? "Fixture") — Admin GraphQL @(Configuration["Shopify:ApiVersion"])</span></div>
+    <div class="field-row"><span class="field-label">Amazon</span><span class="field-value">@(Configuration["Amazon:Mode"] ?? "Fixture")</span></div>
+    <div class="field-row">
+        <span class="field-label">Blob storage</span>
+        <span class="field-value">@(Configuration["BlobStorage:Provider"] ?? "Local")</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">AI controls</div>
+    <div class="field-row">
+        <span class="field-label">Enabled</span>
+        <span class="field-value">
+            <StatusBadge Text="@(AiService.IsEnabled ? "Enabled" : "Disabled")"
+                         Tone="@(AiService.IsEnabled ? StatusBadge.StatusTone.Accent : StatusBadge.StatusTone.Info)" />
+        </span>
+    </div>
+    <div class="field-row"><span class="field-label">Monthly budget</span><span class="field-value">@(Configuration["Ai:MonthlyBudget"] ?? "50")</span></div>
+    <div class="field-row"><span class="field-label">Max calls per invoice</span><span class="field-value">@(Configuration["Ai:MaxCallsPerInvoice"] ?? "8")</span></div>
+    <div class="field-row">
+        <span class="field-label">Boundary</span>
+        <span class="field-value small">
+            AI may propose. It cannot approve, cannot post to Bexio, cannot override deterministic
+            validation, and is given no tools. Every proposal requires a human decision.
+        </span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">Secrets</div>
+    <p class="small muted">
+        Client ids, client secrets, access tokens and refresh tokens are never rendered here, never returned
+        by the API, and never written to logs. Tokens are encrypted at rest and are readable only by the
+        server-side token service.
+    </p>
+    <div class="field-row">
+        <span class="field-label">Bexio client id</span>
+        <span class="field-value">@(string.IsNullOrWhiteSpace(Configuration["Bexio:ClientId"]) ? "not configured" : "configured (value hidden)")</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">Bexio client secret</span>
+        <span class="field-value">@(string.IsNullOrWhiteSpace(Configuration["Bexio:ClientSecret"]) ? "not configured" : "configured (value hidden)")</span>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Roles =
+    [
+        AppRolesShim.Admin, AppRolesShim.Reviewer, AppRolesShim.Approver,
+        AppRolesShim.IntegrationManager, AppRolesShim.ReadOnly,
+    ];
+
+    private bool IsDevelopmentIdentity =>
+        !string.Equals(Configuration["Authentication:Mode"], "EntraId", StringComparison.OrdinalIgnoreCase);
+}

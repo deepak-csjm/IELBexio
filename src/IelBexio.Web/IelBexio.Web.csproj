@@ -1,5 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
+  <PropertyGroup>
+    <UserSecretsId>ielbexio-poc-web</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\IelBexio.Domain\IelBexio.Domain.csproj" />
     <ProjectReference Include="..\IelBexio.Application\IelBexio.Application.csproj" />
@@ -9,11 +19,4 @@
     <ProjectReference Include="..\IelBexio.Connectors.Amazon\IelBexio.Connectors.Amazon.csproj" />
     <ProjectReference Include="..\IelBexio.Ai\IelBexio.Ai.csproj" />
   </ItemGroup>
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-
 </Project>

@@ -1,0 +1,47 @@
+<StatusBadge Text="@Describe(State)" Tone="@ToneFor(State)" Title="@Explain(State)" />
+
+@code {
+    [Parameter, EditorRequired] public InvoiceWorkflowState State { get; set; }
+
+    /// <summary>Human wording for each state; the enum name alone reads as jargon on a review screen.</summary>
+    private static string Describe(InvoiceWorkflowState state) => state switch
+    {
+        InvoiceWorkflowState.Imported => "Imported",
+        InvoiceWorkflowState.Extracted => "Extracted",
+        InvoiceWorkflowState.Validated => "Validated",
+        InvoiceWorkflowState.NeedsReview => "Needs review",
+        InvoiceWorkflowState.HumanVerified => "Verified",
+        InvoiceWorkflowState.ReadyForApproval => "Awaiting approval",
+        InvoiceWorkflowState.Approved => "Approved",
+        InvoiceWorkflowState.QueuedForBexio => "Queued for Bexio",
+        InvoiceWorkflowState.Syncing => "Synchronising",
+        InvoiceWorkflowState.Synced => "Synced to Bexio",
+        InvoiceWorkflowState.ExtractionFailed => "Extraction failed",
+        InvoiceWorkflowState.ValidationFailed => "Validation failed",
+        InvoiceWorkflowState.ApprovalRejected => "Rejected",
+        InvoiceWorkflowState.SyncFailed => "Sync failed",
+        InvoiceWorkflowState.BexioRejected => "Bexio rejected",
+        InvoiceWorkflowState.ReconciliationRequired => "Reconciliation required",
+        _ => state.ToString(),
+    };
+
+    private static StatusBadge.StatusTone ToneFor(InvoiceWorkflowState state) => state switch
+    {
+        InvoiceWorkflowState.Synced => StatusBadge.StatusTone.Ok,
+        InvoiceWorkflowState.Approved or InvoiceWorkflowState.QueuedForBexio or InvoiceWorkflowState.Syncing => StatusBadge.StatusTone.Accent,
+        InvoiceWorkflowState.NeedsReview or InvoiceWorkflowState.ReadyForApproval => StatusBadge.StatusTone.Warning,
+        _ when InvoiceWorkflow.IsFailure(state) => StatusBadge.StatusTone.Error,
+        _ => StatusBadge.StatusTone.Info,
+    };
+
+    private static string Explain(InvoiceWorkflowState state) => state switch
+    {
+        InvoiceWorkflowState.NeedsReview => "Deterministic validation raised warnings, or a tax conclusion needs human verification.",
+        InvoiceWorkflowState.ReadyForApproval => "Verified and awaiting an explicit approval decision. Nothing is sent to Bexio until then.",
+        InvoiceWorkflowState.QueuedForBexio => "Approved. A background worker will create the invoice in Bexio.",
+        InvoiceWorkflowState.Synced => "Created in Bexio. This invoice can never be posted again.",
+        InvoiceWorkflowState.BexioRejected => "Bexio refused the request. It needs a human before it can be retried.",
+        InvoiceWorkflowState.ReconciliationRequired => "This system and Bexio disagree about this invoice.",
+        _ => state.ToString(),
+    };
+}

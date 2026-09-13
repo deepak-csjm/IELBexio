@@ -1,0 +1,88 @@
+@page "/audit"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+
+<PageTitle>Audit log</PageTitle>
+
+<h1>Audit log</h1>
+<p class="page-subtitle">
+    Append-only. Every state change, correction, approval and synchronisation is recorded, including
+    whether AI was involved.
+</p>
+
+<div class="card">
+    <div class="row">
+        <label class="small muted" for="correlation">Correlation id</label>
+        <input id="correlation" type="text" @bind="_correlationFilter" style="width:340px" placeholder="Trace one invoice's whole lifecycle" />
+        <button class="btn" @onclick="LoadAsync">Filter</button>
+        <button class="btn" @onclick="ClearAsync">Clear</button>
+    </div>
+</div>
+
+@if (_events.Count == 0)
+{
+    <div class="card"><p class="muted">No audit events match.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>When</th><th>Action</th><th>Entity</th><th>Actor</th><th>AI</th><th>Reason / change</th><th>Correlation</th></tr></thead>
+        <tbody>
+        @foreach (var e in _events)
+        {
+            <tr>
+                <td class="nowrap small">@e.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td class="mono small">@e.Action</td>
+                <td class="small">@e.EntityType<br /><span class="muted mono">@(e.EntityId?.ToString()[..8] ?? "—")</span></td>
+                <td class="small">@e.Actor</td>
+                <td>
+                    @if (e.AiInvolved)
+                    {
+                        <StatusBadge Text="AI involved" Tone="StatusBadge.StatusTone.Accent" />
+                    }
+                </td>
+                <td class="small">
+                    @if (!string.IsNullOrWhiteSpace(e.Reason))
+                    {
+                        <div>@e.Reason</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(e.NewValueJson))
+                    {
+                        <div class="mono muted" style="max-width:420px; overflow-wrap:anywhere">@e.NewValueJson</div>
+                    }
+                </td>
+                <td class="mono small">@e.CorrelationId</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _correlationFilter = string.Empty;
+    private List<Domain.Audit.AuditEvent> _events = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task ClearAsync()
+    {
+        _correlationFilter = string.Empty;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        var query = db.AuditEvents.Where(e => e.TenantId == Tenant.TenantId);
+
+        if (!string.IsNullOrWhiteSpace(_correlationFilter))
+        {
+            query = query.Where(e => e.CorrelationId == _correlationFilter);
+        }
+
+        _events = await query.OrderByDescending(e => e.OccurredAt).Take(200).ToListAsync();
+    }
+}

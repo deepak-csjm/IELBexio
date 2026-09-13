@@ -1,0 +1,246 @@
+@page "/documents"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Abstractions.IClock Clock
+@inject IelBexio.Application.Abstractions.IBlobStore Blobs
+@inject IelBexio.Application.Abstractions.IAuditWriter Audit
+@inject IelBexio.Application.Documents.FileInspector Inspector
+@inject IEnumerable<IelBexio.Application.Documents.IDeterministicDocumentExtractor> Extractors
+@inject IelBexio.Application.Invoices.IInvoiceProcessingService Processing
+
+<PageTitle>Documents</PageTitle>
+
+<h1>Documents</h1>
+<p class="page-subtitle">
+    Upload an invoice document. The file's own bytes decide its type — a declared content type is never
+    trusted — and machine-readable formats are parsed deterministically, without AI.
+</p>
+
+@if (_message is not null)
+{
+    <div class="banner @(_messageIsError ? "banner-error" : "banner-ok")">@_message</div>
+}
+
+<div class="card">
+    <div class="card-title">Upload</div>
+    <InputFile OnChange="OnFileSelectedAsync" accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.csv,.json" />
+    <p class="small muted" style="margin-top:8px">
+        Accepted: PDF, PNG, JPEG, TIFF, CSV, JSON. Executables, archives and anything whose contents do not
+        match an accepted format are refused, and the refusal is recorded with the file's hash.
+    </p>
+</div>
+
+@if (_documents.Count == 0)
+{
+    <div class="card"><p class="muted">No documents have been ingested.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>Ingested</th><th>File</th><th>Type</th><th class="numeric">Size</th><th>SHA-256</th><th>Status</th><th>Invoice</th></tr></thead>
+        <tbody>
+        @foreach (var document in _documents)
+        {
+            <tr>
+                <td class="nowrap small">@document.IngestedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td>@document.OriginalFileName</td>
+                <td class="small mono">@document.ContentType<br /><span class="muted">@document.Kind</span></td>
+                <td class="numeric small">@(document.SizeBytes / 1024) KB</td>
+                <td class="mono small" title="@document.Sha256">@document.Sha256[..16]…</td>
+                <td>
+                    @switch (document.Status)
+                    {
+                        case Domain.Documents.DocumentProcessingStatus.Extracted:
+                            <StatusBadge Text="Extracted" Tone="StatusBadge.StatusTone.Ok" />
+                            break;
+                        case Domain.Documents.DocumentProcessingStatus.Rejected:
+                            <StatusBadge Text="Rejected" Tone="StatusBadge.StatusTone.Error" Title="@document.RejectionReason" />
+                            break;
+                        case Domain.Documents.DocumentProcessingStatus.DuplicateOfExisting:
+                            <StatusBadge Text="Duplicate" Tone="StatusBadge.StatusTone.Warning" Title="Identical content was already ingested." />
+                            break;
+                        case Domain.Documents.DocumentProcessingStatus.Failed:
+                            <StatusBadge Text="Extraction failed" Tone="StatusBadge.StatusTone.Error" Title="@document.RejectionReason" />
+                            break;
+                        default:
+                            <StatusBadge Text="@document.Status.ToString()" Tone="StatusBadge.StatusTone.Info" />
+                            break;
+                    }
+                    @if (!string.IsNullOrWhiteSpace(document.RejectionReason))
+                    {
+                        <div class="small muted">@document.RejectionReason</div>
+                    }
+                </td>
+                <td>
+                    @if (document.InvoiceId is { } invoiceId)
+                    {
+                        <a class="btn" href="@($"invoices/{invoiceId}")">Open invoice</a>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Domain.Documents.DocumentArtifact> _documents = [];
+    private string? _message;
+    private bool _messageIsError;
+
+    /// <summary>Hard cap on what the browser may stream in, independent of the configured size limit.</summary>
+    private const long MaxUploadBytes = 20 * 1024 * 1024;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        _documents = await db.DocumentArtifacts
+            .Where(d => d.TenantId == Tenant.TenantId)
+            .OrderByDescending(d => d.IngestedAt)
+            .Take(100)
+            .ToListAsync();
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _message = null;
+
+        try
+        {
+            var file = e.File;
+
+            await using var stream = file.OpenReadStream(MaxUploadBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var content = buffer.ToArray();
+
+            // The inspector decides the type from the bytes, not from file.ContentType.
+            var inspection = Inspector.Inspect(content, file.ContentType, file.Name);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            db.SuppressTenantFilter = true;
+
+            // Content-addressed duplicate detection: the same bytes are never ingested twice.
+            var existing = await db.DocumentArtifacts
+                .FirstOrDefaultAsync(d => d.TenantId == Tenant.TenantId && d.Sha256 == inspection.Sha256);
+
+            if (existing is not null)
+            {
+                _message = $"This file is byte-for-byte identical to '{existing.OriginalFileName}', ingested on " +
+                           $"{existing.IngestedAt:yyyy-MM-dd}. It has not been ingested again.";
+                _messageIsError = false;
+                await LoadAsync();
+                return;
+            }
+
+            var artifact = new Domain.Documents.DocumentArtifact
+            {
+                TenantId = Tenant.TenantId,
+                OriginalFileName = file.Name,
+                ContentType = inspection.DetectedContentType,
+                SizeBytes = inspection.SizeBytes,
+                Sha256 = inspection.Sha256,
+                Kind = inspection.Kind,
+                IngestedAt = Clock.UtcNow,
+                SourceSystem = SourceSystem.DocumentUpload,
+            };
+
+            if (!inspection.IsAccepted)
+            {
+                // Rejections are recorded, not discarded: repeated attempts to upload the same bad file
+                // are worth being able to see.
+                artifact.Status = Domain.Documents.DocumentProcessingStatus.Rejected;
+                artifact.RejectionReason = inspection.RejectionReason;
+                artifact.BlobUri = "(not stored)";
+
+                db.DocumentArtifacts.Add(artifact);
+                await db.SaveChangesAsync();
+                await Audit.WriteAsync(Domain.Audit.AuditActions.DocumentRejected, nameof(Domain.Documents.DocumentArtifact),
+                    artifact.Id, reason: inspection.RejectionReason);
+
+                _message = $"Rejected: {inspection.RejectionReason}";
+                _messageIsError = true;
+                await LoadAsync();
+                return;
+            }
+
+            // The stored name is generated, never derived from the upload (§25).
+            var blobName = Infrastructure.Blob.BlobNaming.Create(Clock.UtcNow, file.Name);
+            using var toStore = new MemoryStream(content);
+            artifact.BlobUri = await Blobs.PutAsync("documents", blobName, toStore, inspection.DetectedContentType);
+            artifact.Status = Domain.Documents.DocumentProcessingStatus.Validated;
+
+            db.DocumentArtifacts.Add(artifact);
+            await db.SaveChangesAsync();
+            await Audit.WriteAsync(Domain.Audit.AuditActions.DocumentIngested, nameof(Domain.Documents.DocumentArtifact), artifact.Id);
+
+            // Deterministic extraction where the format allows it; no AI is involved.
+            var extractor = Extractors.FirstOrDefault(x => x.CanExtract(inspection.Kind, inspection.DetectedContentType));
+
+            if (extractor is null)
+            {
+                _message = $"Stored. No deterministic extractor handles {inspection.DetectedContentType}; " +
+                           "a PDF or image needs AI extraction, which is disabled in this deployment.";
+                _messageIsError = false;
+                artifact.Status = Domain.Documents.DocumentProcessingStatus.Classified;
+                await db.SaveChangesAsync();
+                await LoadAsync();
+                return;
+            }
+
+            var extraction = extractor.Extract(content, Tenant.TenantId, $"document:{inspection.Sha256[..16]}");
+
+            if (!extraction.Succeeded)
+            {
+                artifact.Status = Domain.Documents.DocumentProcessingStatus.Failed;
+                artifact.RejectionReason = extraction.FailureReason;
+                await db.SaveChangesAsync();
+
+                _message = $"Stored, but extraction failed: {extraction.FailureReason}";
+                _messageIsError = true;
+                await LoadAsync();
+                return;
+            }
+
+            var invoice = extraction.Invoice!;
+            invoice.PrimaryDocumentArtifactId = artifact.Id;
+
+            if (extraction.Customer is { } customer)
+            {
+                db.Customers.Add(customer);
+            }
+
+            invoice.Customer = null;
+            db.Invoices.Add(invoice);
+
+            foreach (var line in extraction.Lines)
+            {
+                line.InvoiceId = invoice.Id;
+                db.InvoiceLines.Add(line);
+            }
+
+            artifact.InvoiceId = invoice.Id;
+            artifact.Status = Domain.Documents.DocumentProcessingStatus.Extracted;
+
+            await db.SaveChangesAsync();
+
+            await Processing.ProcessAsync(invoice.Id);
+
+            _message = $"Extracted deterministically ({extraction.Method}) into invoice " +
+                       $"{invoice.InvoiceNumber ?? invoice.Id.ToString()[..8]}, and validated.";
+            _messageIsError = false;
+        }
+        catch (Exception ex)
+        {
+            _message = $"The upload could not be processed: {ex.Message}";
+            _messageIsError = true;
+        }
+
+        await LoadAsync();
+    }
+}

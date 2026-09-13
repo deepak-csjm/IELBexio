@@ -229,6 +229,21 @@ public sealed class EndToEndHappyPathTests
             actions.Should().Contain(AuditActions.InvoiceQueuedForSync);
             actions.Should().Contain(AuditActions.InvoiceSyncSucceeded);
 
+            // Regression: the worker once wrote its audit events with an empty tenant id, because the
+            // dispatcher spans tenants and never set one. The two most important records in the system —
+            // "we posted this to an accounting system" — were therefore invisible to the tenant that
+            // owned them. These must be readable through the tenant-filtered query, not just present
+            // in the table.
+            var tenantScopedSyncEvents = await db.AuditEvents
+                .Where(e => e.TenantId == invoice.TenantId
+                            && (e.Action == AuditActions.InvoiceSyncStarted || e.Action == AuditActions.InvoiceSyncSucceeded))
+                .CountAsync();
+
+            tenantScopedSyncEvents.Should().Be(2, "worker-written audit events must belong to the invoice's tenant");
+
+            (await db.AuditEvents.CountAsync(e => e.TenantId == Guid.Empty))
+                .Should().Be(0, "no audit event may be orphaned without a tenant");
+
             // A complete lifecycle must be traceable with one correlation id (§27).
             var byCorrelation = await db.AuditEvents.CountAsync(e => e.CorrelationId == invoice.CorrelationId);
             byCorrelation.Should().BeGreaterThan(0);
@@ -276,7 +291,8 @@ public sealed class EndToEndHappyPathTests
                 sp.GetRequiredService<IOutboxStore>(),
                 sp.GetRequiredService<IInvoiceSynchronizationService>(),
                 new OutboxOptions { MaxAttempts = 3, BaseBackoff = TimeSpan.FromMilliseconds(10) },
-                sp.GetRequiredService<Application.Abstractions.IClock>());
+                sp.GetRequiredService<Application.Abstractions.IClock>(),
+                applyTenant: tenantId => sp.GetRequiredService<Infrastructure.Services.AmbientTenantContext>().Set(tenantId));
 
             return await processor.ProcessBatchAsync();
         });

@@ -1,0 +1,154 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Bexio.IBexioClient BexioClient
+@inject IelBexio.Application.Ai.IAiService AiService
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+<p class="page-subtitle">Pipeline state for @TenantName.</p>
+
+@if (_loading)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <div class="grid grid-4">
+        <div class="metric">
+            <div class="metric-value">@_total</div>
+            <div class="metric-label">Invoices</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_needsReview</div>
+            <div class="metric-label">Needs review</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_awaitingApproval</div>
+            <div class="metric-label">Awaiting approval</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_synced</div>
+            <div class="metric-label">Synced to Bexio</div>
+        </div>
+    </div>
+
+    <div class="grid grid-4" style="margin-top:14px">
+        <div class="metric">
+            <div class="metric-value">@_queued</div>
+            <div class="metric-label">Queued / syncing</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_failed</div>
+            <div class="metric-label">Failed</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_deadLettered</div>
+            <div class="metric-label">Dead-lettered</div>
+        </div>
+        <div class="metric">
+            <div class="metric-value">@_duplicatesPrevented</div>
+            <div class="metric-label">Duplicates prevented</div>
+        </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:18px">
+        <div class="card">
+            <div class="card-title">Destination</div>
+            <div class="field-row">
+                <span class="field-label">Bexio mode</span>
+                <span class="field-value">
+                    @BexioClient.ModeName
+                    @if (!BexioClient.RequiresAuthorizedConnection)
+                    {
+                        <div class="small muted">No Bexio account is contacted in this mode. Nothing here reaches a real ledger.</div>
+                    }
+                </span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">AI assistance</span>
+                <span class="field-value">
+                    @if (AiService.IsEnabled)
+                    {
+                        <StatusBadge Text="Enabled" Tone="StatusBadge.StatusTone.Accent" />
+                        <div class="small muted">AI produces proposals only. It cannot approve or post.</div>
+                    }
+                    else
+                    {
+                        <StatusBadge Text="Disabled" Tone="StatusBadge.StatusTone.Info" />
+                        <div class="small muted">Deterministic ingestion, validation and synchronisation are unaffected.</div>
+                    }
+                </span>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">Recent activity</div>
+            @if (_recentAudit.Count == 0)
+            {
+                <p class="muted">Nothing has happened yet. Run an import to begin.</p>
+            }
+            else
+            {
+                <table>
+                    <thead><tr><th>When</th><th>Action</th><th>Actor</th></tr></thead>
+                    <tbody>
+                    @foreach (var e in _recentAudit)
+                    {
+                        <tr>
+                            <td class="small nowrap">@e.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                            <td class="mono">@e.Action</td>
+                            <td class="small">@e.Actor</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private string TenantName = "this tenant";
+    private int _total, _needsReview, _awaitingApproval, _synced, _queued, _failed, _deadLettered, _duplicatesPrevented;
+    private List<Domain.Audit.AuditEvent> _recentAudit = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        var tenantId = Tenant.TenantId;
+        var invoices = db.Invoices.Where(i => i.TenantId == tenantId);
+
+        _total = await invoices.CountAsync();
+        _needsReview = await invoices.CountAsync(i => i.WorkflowState == InvoiceWorkflowState.NeedsReview);
+        _awaitingApproval = await invoices.CountAsync(i => i.WorkflowState == InvoiceWorkflowState.ReadyForApproval);
+        _synced = await invoices.CountAsync(i => i.WorkflowState == InvoiceWorkflowState.Synced);
+        _queued = await invoices.CountAsync(i => i.WorkflowState == InvoiceWorkflowState.QueuedForBexio || i.WorkflowState == InvoiceWorkflowState.Syncing);
+        _failed = await invoices.CountAsync(i => (int)i.WorkflowState >= 100);
+
+        _deadLettered = await db.OutboxMessages.CountAsync(m => m.TenantId == tenantId && m.Status == Domain.Sync.OutboxStatus.DeadLettered);
+
+        // A visible count of prevented duplicates makes the idempotency guarantee observable rather
+        // than merely claimed.
+        _duplicatesPrevented = await db.AuditEvents.CountAsync(e =>
+            e.TenantId == tenantId &&
+            (e.Action == Domain.Audit.AuditActions.InvoiceDuplicateSkipped ||
+             e.Action == Domain.Audit.AuditActions.InvoiceSyncSkippedDuplicate));
+
+        _recentAudit = await db.AuditEvents
+            .Where(e => e.TenantId == tenantId)
+            .OrderByDescending(e => e.OccurredAt)
+            .Take(12)
+            .ToListAsync();
+
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId);
+        TenantName = tenant?.Name ?? "this tenant";
+
+        _loading = false;
+    }
+}

@@ -1,0 +1,147 @@
+@page "/imports"
+@rendermode InteractiveServer
+@inject IelBexio.Application.Invoices.IImportService ImportService
+@inject IelBexio.Application.Invoices.IInvoiceProcessingService Processing
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+
+<PageTitle>Imports</PageTitle>
+
+<h1>Imports</h1>
+<p class="page-subtitle">
+    Importing the same source document twice is safe: the second import is recognised and skipped.
+</p>
+
+@if (_message is not null)
+{
+    <div class="banner @(_messageIsError ? "banner-error" : "banner-ok")">@_message</div>
+}
+
+<div class="card">
+    <div class="card-title">Run an import</div>
+    <div class="row">
+        <select @bind="_sourceSystem" style="width:auto">
+            <option value="Shopify">Shopify</option>
+            <option value="Amazon">Amazon</option>
+        </select>
+        <button class="btn btn-primary" @onclick="RunImportAsync" disabled="@_busy">
+            @(_busy ? "Importing…" : "Import and validate")
+        </button>
+    </div>
+    <p class="small muted" style="margin-top:8px">
+        Every imported invoice is validated immediately, so anything needing attention appears in the review
+        queue rather than sitting silently.
+    </p>
+</div>
+
+@if (_lastMessages.Count > 0)
+{
+    <div class="card">
+        <div class="card-title">Last import</div>
+        @foreach (var line in _lastMessages)
+        {
+            <div class="small mono" style="padding:2px 0">@line</div>
+        }
+    </div>
+}
+
+<h2>Import history</h2>
+@if (_runs.Count == 0)
+{
+    <div class="card"><p class="muted">No imports have been run yet.</p></div>
+}
+else
+{
+    <table>
+        <thead>
+        <tr><th>Started</th><th>Source</th><th>Status</th><th class="numeric">Seen</th><th class="numeric">Created</th>
+            <th class="numeric">New version</th><th class="numeric">Skipped</th><th class="numeric">Failed</th><th>Correlation</th></tr>
+        </thead>
+        <tbody>
+        @foreach (var run in _runs)
+        {
+            <tr>
+                <td class="nowrap small">@run.StartedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td>@run.SourceSystem</td>
+                <td>
+                    <StatusBadge Text="@run.Status.ToString()"
+                                 Tone="@(run.Status == Domain.Invoicing.ImportRunStatus.Succeeded ? StatusBadge.StatusTone.Ok
+                                       : run.Status == Domain.Invoicing.ImportRunStatus.Failed ? StatusBadge.StatusTone.Error
+                                       : StatusBadge.StatusTone.Warning)" />
+                </td>
+                <td class="numeric">@run.DocumentsSeen</td>
+                <td class="numeric">@run.InvoicesCreated</td>
+                <td class="numeric">@run.InvoicesUpdated</td>
+                <td class="numeric">@run.DuplicatesSkipped</td>
+                <td class="numeric">@run.Failures</td>
+                <td class="mono small">@run.CorrelationId</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string _sourceSystem = "Shopify";
+    private bool _busy;
+    private string? _message;
+    private bool _messageIsError;
+    private List<string> _lastMessages = [];
+    private List<Domain.Invoicing.ImportRun> _runs = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        _runs = await db.ImportRuns
+            .Where(r => r.TenantId == Tenant.TenantId)
+            .OrderByDescending(r => r.StartedAt)
+            .Take(25)
+            .ToListAsync();
+    }
+
+    private async Task RunImportAsync()
+    {
+        _busy = true;
+        _message = null;
+
+        var source = Enum.Parse<SourceSystem>(_sourceSystem);
+        var result = await ImportService.ImportAsync(source, new IelBexio.Application.Sources.SourceQuery());
+
+        if (result.Succeeded)
+        {
+            var summary = result.Value!;
+            _lastMessages = summary.Messages.ToList();
+
+            // Validate each newly imported invoice straight away so the review queue is accurate.
+            await using (var db = await DbFactory.CreateDbContextAsync())
+            {
+                db.SuppressTenantFilter = true;
+                var ids = await db.Invoices
+                    .Where(i => i.ImportRunId == summary.ImportRunId)
+                    .Select(i => i.Id)
+                    .ToListAsync();
+
+                foreach (var id in ids)
+                {
+                    await Processing.ProcessAsync(id);
+                }
+            }
+
+            _message = $"Seen {summary.DocumentsSeen}, created {summary.Created}, " +
+                       $"new versions {summary.Updated}, already imported {summary.DuplicatesSkipped}, failed {summary.Failures}.";
+            _messageIsError = false;
+        }
+        else
+        {
+            _message = $"{result.ErrorCode}: {result.ErrorMessage}";
+            _messageIsError = true;
+        }
+
+        _busy = false;
+        await LoadAsync();
+    }
+}

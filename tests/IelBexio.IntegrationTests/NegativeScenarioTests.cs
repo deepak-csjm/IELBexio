@@ -112,7 +112,8 @@ public sealed class NegativeScenarioTests
                 sp.GetRequiredService<IOutboxStore>(),
                 sp.GetRequiredService<IInvoiceSynchronizationService>(),
                 new OutboxOptions { MaxAttempts = maxAttempts, BaseBackoff = TimeSpan.FromMilliseconds(1), MaxBackoff = TimeSpan.FromMilliseconds(5) },
-                sp.GetRequiredService<IClock>());
+                sp.GetRequiredService<IClock>(),
+                applyTenant: tenantId => sp.GetRequiredService<Infrastructure.Services.AmbientTenantContext>().Set(tenantId));
 
             return await processor.ProcessBatchAsync();
         });
@@ -285,6 +286,32 @@ public sealed class NegativeScenarioTests
 
             invoice.WorkflowState.Should().Be(InvoiceWorkflowState.NeedsReview);
             invoice.ValidationStatus.Should().Be(ValidationStatus.PassedWithWarnings);
+        });
+    }
+
+    [Fact]
+    public async Task An_undetermined_tax_routes_to_review_on_the_very_first_validation_pass()
+    {
+        // Regression: tax assessments were once queried back from the database before being saved, so
+        // the first pass raised no tax warnings at all and an invoice with an unclassifiable tax was
+        // routed to Validated. Pre-flight still blocked the posting, but nobody was told to look —
+        // which is precisely the failure mode a review queue exists to prevent.
+        await using var host = await TestHost.CreateAsync(_postgres, "neg_first_pass_tax");
+
+        // INV-10003 is billed to Germany at 19%, which the Swiss rule table deliberately cannot classify.
+        var invoiceId = await ImportAsync(host, "gid://shopify/Order/10003");
+
+        await host.AsAdminAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<AppDbContext>();
+            var invoice = await db.Invoices.SingleAsync(i => i.Id == invoiceId);
+
+            invoice.WorkflowState.Should().Be(InvoiceWorkflowState.NeedsReview,
+                "an unclassifiable tax must reach a human on the first pass, not the second");
+            invoice.ValidationStatus.Should().Be(ValidationStatus.PassedWithWarnings);
+
+            var assessment = await db.TaxAssessments.SingleAsync(a => a.InvoiceId == invoiceId);
+            assessment.DeterminationMethod.Should().Be(Domain.Tax.TaxDeterminationMethod.Undetermined);
         });
     }
 

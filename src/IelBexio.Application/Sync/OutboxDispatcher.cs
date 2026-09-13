@@ -96,13 +96,30 @@ public sealed class OutboxProcessor
     private readonly IInvoiceSynchronizationService _sync;
     private readonly OutboxOptions _options;
     private readonly IClock _clock;
+    private readonly Action<Guid>? _applyTenant;
 
-    public OutboxProcessor(IOutboxStore store, IInvoiceSynchronizationService sync, OutboxOptions options, IClock clock)
+    /// <param name="applyTenant">
+    /// Establishes the tenant context for the message about to be dispatched.
+    /// <para>
+    /// This is not optional decoration. The dispatcher deliberately spans tenants — one queue serves
+    /// them all — but everything it triggers downstream writes tenant-scoped rows: audit events,
+    /// provenance, synchronisation attempts. Without setting the tenant per message, those rows are
+    /// written with an empty tenant id and become invisible to the tenant that owns them, which silently
+    /// loses precisely the audit records that say money was posted to an accounting system.
+    /// </para>
+    /// </param>
+    public OutboxProcessor(
+        IOutboxStore store,
+        IInvoiceSynchronizationService sync,
+        OutboxOptions options,
+        IClock clock,
+        Action<Guid>? applyTenant = null)
     {
         _store = store;
         _sync = sync;
         _options = options;
         _clock = clock;
+        _applyTenant = applyTenant;
     }
 
     /// <summary>Identifies this worker in message leases, so a crashed worker's messages can be reclaimed.</summary>
@@ -148,6 +165,9 @@ public sealed class OutboxProcessor
                 deadLettered++;
                 continue;
             }
+
+            // Scope the work to the message's own tenant before anything downstream writes a row.
+            _applyTenant?.Invoke(payload.TenantId);
 
             var result = await _sync.SynchronizeAsync(payload.InvoiceId, message.CorrelationId, cancellationToken);
 

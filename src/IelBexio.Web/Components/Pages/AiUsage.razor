@@ -1,0 +1,100 @@
+@page "/ai-usage"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Ai.IAiService AiService
+
+<PageTitle>AI usage</PageTitle>
+
+<h1>AI usage</h1>
+<p class="page-subtitle">Cost, refusals and outcomes. Prompts and responses are deliberately not stored.</p>
+
+<div class="card">
+    <div class="field-row">
+        <span class="field-label">Status</span>
+        <span class="field-value">
+            @if (AiService.IsEnabled)
+            {
+                <StatusBadge Text="Enabled" Tone="StatusBadge.StatusTone.Accent" />
+            }
+            else
+            {
+                <StatusBadge Text="Disabled" Tone="StatusBadge.StatusTone.Info" />
+                <div class="small muted">
+                    Deterministic ingestion, validation, approval and synchronisation are unaffected by this.
+                </div>
+            }
+        </span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">What AI may do</span>
+        <span class="field-value small">
+            Propose values for a human to accept or reject. It cannot approve anything, cannot post to
+            Bexio, cannot override validation, and has no tools available to it.
+        </span>
+    </div>
+</div>
+
+<div class="grid grid-4">
+    <div class="metric"><div class="metric-value">@_records.Count</div><div class="metric-label">Calls recorded</div></div>
+    <div class="metric"><div class="metric-value">@_records.Count(r => !r.Succeeded)</div><div class="metric-label">Refused or failed</div></div>
+    <div class="metric"><div class="metric-value">@_records.Count(r => r.ServedFromCache)</div><div class="metric-label">Served from cache</div></div>
+    <div class="metric"><div class="metric-value">@_totalCost.ToString("0.0000")</div><div class="metric-label">Estimated cost</div></div>
+</div>
+
+<h2>Recent calls</h2>
+@if (_records.Count == 0)
+{
+    <div class="card"><p class="muted">No AI calls have been recorded.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>When</th><th>Operation</th><th>Model</th><th>Prompt v.</th><th class="numeric">Latency</th>
+            <th class="numeric">Tokens</th><th class="numeric">Est. cost</th><th>Outcome</th><th>Invoice</th></tr></thead>
+        <tbody>
+        @foreach (var r in _records)
+        {
+            <tr>
+                <td class="nowrap small">@r.OccurredAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td class="small">@r.Operation</td>
+                <td class="small mono">@r.Model</td>
+                <td class="small mono">@r.PromptVersion</td>
+                <td class="numeric small">@r.LatencyMs ms</td>
+                <td class="numeric small">@r.TotalTokens</td>
+                <td class="numeric small">@r.EstimatedCost.ToString("0.000000") @r.CostCurrency</td>
+                <td>
+                    @if (r.Succeeded)
+                    {
+                        <StatusBadge Text="@(r.ServedFromCache ? "Cached" : "Succeeded")" Tone="StatusBadge.StatusTone.Ok" />
+                    }
+                    else
+                    {
+                        <StatusBadge Text="@r.FailureReason.ToString()" Tone="StatusBadge.StatusTone.Warning" Title="@r.FailureDetail" />
+                    }
+                </td>
+                <td class="mono small">@(r.InvoiceId?.ToString()[..8] ?? "—")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Domain.Ai.AiUsageRecord> _records = [];
+    private decimal _totalCost;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        _records = await db.AiUsageRecords
+            .Where(r => r.TenantId == Tenant.TenantId)
+            .OrderByDescending(r => r.OccurredAt)
+            .Take(200)
+            .ToListAsync();
+
+        _totalCost = _records.Sum(r => r.EstimatedCost);
+    }
+}

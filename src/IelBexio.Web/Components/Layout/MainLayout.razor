@@ -1,0 +1,59 @@
+@inherits LayoutComponentBase
+@inject IConfiguration Configuration
+@inject IelBexio.Application.Bexio.IBexioClient BexioClient
+
+<div class="app">
+    <nav class="sidebar">
+        <div class="brand">
+            <span class="brand-mark">IEL</span>
+            <span class="brand-name">Bexio Invoice Integration</span>
+        </div>
+
+        <div class="mode-banner @(IsLiveBexio ? "mode-live" : "mode-mock")">
+            <strong>@(IsLiveBexio ? "LIVE" : "MOCK")</strong>
+            <span>@BexioClient.ModeName</span>
+        </div>
+
+        <ul class="nav">
+            @foreach (var item in NavigationItems)
+            {
+                <li>
+                    <NavLink href="@item.Href" Match="@(item.Href == "" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                        <span class="nav-icon" aria-hidden="true">@item.Icon</span>
+                        <span>@item.Label</span>
+                    </NavLink>
+                </li>
+            }
+        </ul>
+    </nav>
+
+    <main class="content">
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool IsLiveBexio => BexioClient.RequiresAuthorizedConnection;
+
+    private sealed record NavItem(string Href, string Label, string Icon);
+
+    // The navigation required by §15. Icons are text glyphs rather than a font dependency; status is
+    // always conveyed by text as well as colour, per the same section.
+    private static readonly NavItem[] NavigationItems =
+    [
+        new("", "Dashboard", "▤"),
+        new("connections", "Connections", "⇄"),
+        new("imports", "Imports", "↓"),
+        new("documents", "Documents", "▦"),
+        new("invoices", "Invoices", "▤"),
+        new("customers", "Customers", "◉"),
+        new("tax-mapping", "Tax Mapping", "%"),
+        new("review", "Review Queue", "✎"),
+        new("approvals", "Approvals", "✓"),
+        new("bexio", "Bexio", "▣"),
+        new("synchronization", "Synchronization", "⟳"),
+        new("audit", "Audit Log", "≡"),
+        new("ai-usage", "AI Usage", "◈"),
+        new("settings", "Settings", "⚙"),
+    ];
+}

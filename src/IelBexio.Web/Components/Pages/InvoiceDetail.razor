@@ -1,0 +1,466 @@
+@page "/invoices/{InvoiceId:guid}"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Abstractions.ICurrentUser CurrentUser
+@inject IelBexio.Application.Invoices.IInvoiceProcessingService Processing
+@inject IelBexio.Application.Invoices.IReviewService Review
+@inject IelBexio.Application.Invoices.IApprovalService Approval
+@inject IelBexio.Application.Sync.BexioPreflightService Preflight
+@inject NavigationManager Navigation
+
+<PageTitle>@(_invoice?.InvoiceNumber ?? "Invoice")</PageTitle>
+
+@if (_invoice is null)
+{
+    <h1>Invoice</h1>
+    <p class="muted">@(_loading ? "Loading…" : "This invoice does not exist.")</p>
+}
+else
+{
+    <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div>
+            <h1>@(_invoice.InvoiceNumber ?? "(no invoice number)")</h1>
+            <p class="page-subtitle">
+                <span class="badge badge-info">@_invoice.SourceSystem</span>
+                <span class="mono small">@_invoice.SourceDocumentId</span>
+                <span class="small muted">version @_invoice.SourceDocumentVersion</span>
+            </p>
+        </div>
+        <div class="stack right">
+            <WorkflowBadge State="_invoice.WorkflowState" />
+            <span class="small muted mono">correlation @_invoice.CorrelationId</span>
+        </div>
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="banner @(_messageIsError ? "banner-error" : "banner-ok")">@_message</div>
+    }
+
+    @if (_invoice.WorkflowState == InvoiceWorkflowState.Synced)
+    {
+        <div class="banner banner-ok">
+            Created in Bexio as <strong>@_invoice.BexioInvoiceId</strong>. This invoice can never be posted again.
+        </div>
+    }
+
+    <div class="split">
+        @* LEFT: the source document, verbatim. §15 requires the original beside the extracted data. *@
+        <div class="card">
+            <div class="card-title">Source document (as received)</div>
+            <p class="small muted">
+                The untouched payload retained at import. Everything on the right is derived from this,
+                and every derivation is traceable.
+            </p>
+            <div class="doc-pane">
+                <pre>@_rawPayload</pre>
+            </div>
+        </div>
+
+        @* RIGHT: the canonical data, with provenance under each field. *@
+        <div class="card">
+            <div class="card-title">Extracted canonical data</div>
+
+            <div class="field-row">
+                <span class="field-label">Invoice number</span>
+                <span class="field-value">
+                    @(_invoice.InvoiceNumber ?? "—")
+                    <div class="provenance">@ProvenanceFor("invoiceNumber")</div>
+                </span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Invoice date</span>
+                <span class="field-value">
+                    @(_invoice.InvoiceDate?.ToString("yyyy-MM-dd") ?? "—")
+                    <div class="provenance">@ProvenanceFor("invoiceDate")</div>
+                </span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Customer</span>
+                <span class="field-value">
+                    @(_customer?.DisplayName ?? "—")
+                    @if (_customer?.IsAnonymised == true)
+                    {
+                        <div><StatusBadge Text="Identity not supplied by source" Tone="StatusBadge.StatusTone.Warning" /></div>
+                    }
+                    <div class="provenance">@ProvenanceFor("customer.companyName")</div>
+                </span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">VAT / UID</span>
+                <span class="field-value">
+                    @(_customer?.VatNumber ?? "—")
+                    <div class="provenance">@ProvenanceFor("customer.vatNumber")</div>
+                </span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Currency</span>
+                <span class="field-value">@_invoice.Currency</span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Subtotal</span>
+                <span class="field-value"><MoneyText Amount="_invoice.SubtotalAmount" Currency="_invoice.Currency" /></span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Discount</span>
+                <span class="field-value"><MoneyText Amount="_invoice.DiscountAmount" Currency="_invoice.Currency" /></span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Shipping</span>
+                <span class="field-value"><MoneyText Amount="_invoice.ShippingAmount" Currency="_invoice.Currency" /></span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Tax</span>
+                <span class="field-value"><MoneyText Amount="_invoice.TaxAmount" Currency="_invoice.Currency" /></span>
+            </div>
+            <div class="field-row">
+                <span class="field-label">Total</span>
+                <span class="field-value">
+                    <strong><MoneyText Amount="_invoice.TotalAmount" Currency="_invoice.Currency" /></strong>
+                    <div class="provenance">@ProvenanceFor("totalAmount")</div>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <h2>Line items</h2>
+    <table>
+        <thead>
+        <tr>
+            <th>#</th><th>Description</th><th>SKU</th>
+            <th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th>
+            <th class="numeric">Rate</th><th class="numeric">Tax</th><th class="numeric">Gross</th>
+            <th>Tax classification</th><th>Bexio mapping</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var line in _lines)
+        {
+            var assessment = _assessments.FirstOrDefault(a => a.InvoiceLineId == line.Id);
+            <tr>
+                <td>@line.LineNumber</td>
+                <td>
+                    @line.Description
+                    @if (line.Kind != LineKind.Product)
+                    {
+                        <div><span class="badge badge-info">@line.Kind</span></div>
+                    }
+                </td>
+                <td class="mono small">@(line.Sku ?? "—")</td>
+                <td class="numeric">@line.Quantity.ToString("0.###")</td>
+                <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.NetAmount" Currency="line.Currency" /></td>
+                <td class="numeric">@line.TaxRatePercent.ToString("0.##")%</td>
+                <td class="numeric"><MoneyText Amount="line.TaxAmount" Currency="line.Currency" /></td>
+                <td class="numeric"><MoneyText Amount="line.GrossAmount" Currency="line.Currency" /></td>
+                <td>
+                    @if (assessment is null)
+                    {
+                        <StatusBadge Text="No assessment" Tone="StatusBadge.StatusTone.Error" />
+                    }
+                    else
+                    {
+                        <div class="stack">
+                            <span class="mono small">@(assessment.InternalTaxCode ?? "unclassified")</span>
+                            <span class="small muted">@assessment.TaxType — determined by @assessment.DeterminationMethod</span>
+                            @if (assessment.HumanVerified)
+                            {
+                                <StatusBadge Text="@($"Verified by {assessment.VerifiedBy}")" Tone="StatusBadge.StatusTone.Ok" />
+                            }
+                            else
+                            {
+                                <StatusBadge
+                                    Text="@($"Workflow signal {assessment.ConfidenceSignal:P0}")"
+                                    Tone="@(assessment.ConfidenceSignal >= 0.95m ? StatusBadge.StatusTone.Info : StatusBadge.StatusTone.Warning)"
+                                    Title="A routing signal, not a tax determination. It decides whether a human must look, nothing more." />
+                            }
+                            @if (!string.IsNullOrWhiteSpace(assessment.Rationale))
+                            {
+                                <span class="small muted">@assessment.Rationale</span>
+                            }
+                            @if (!assessment.HumanVerified && CanReview)
+                            {
+                                <button class="btn" @onclick="() => VerifyTaxAsync(assessment.Id)">Verify this tax</button>
+                            }
+                        </div>
+                    }
+                </td>
+                <td class="small mono">
+                    <div class="stack">
+                        <span>tax: @(line.BexioTaxId ?? "—")</span>
+                        <span>account: @(line.BexioAccountId ?? "—")</span>
+                        <span>article: @(line.BexioArticleId ?? "—")</span>
+                    </div>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+    <h2>Deterministic validation</h2>
+    <div class="card">
+        <p class="small muted">
+            Produced by ordinary arithmetic and rule checking, with no AI involvement. These results are
+            identical whether AI is enabled or disabled.
+        </p>
+        <ValidationIssueList Issues="_report?.Issues" />
+    </div>
+
+    @if (_proposals.Count > 0)
+    {
+        <h2>AI proposals</h2>
+        <div class="card">
+            <div class="banner banner-info">
+                These are suggestions for you to judge. Nothing here has changed the invoice, and accepting
+                a proposal records the change as <em>your</em> decision.
+            </div>
+            <table>
+                <thead><tr><th>Field</th><th>Proposed</th><th>Signal</th><th>Model</th><th>Evidence</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var proposal in _proposals)
+                {
+                    <tr>
+                        <td class="mono small">@proposal.FieldPath</td>
+                        <td class="mono">@proposal.ProposedValueJson</td>
+                        <td>@proposal.ConfidenceSignal.ToString("P0")</td>
+                        <td class="small">@proposal.Model <span class="muted">@proposal.PromptVersion</span></td>
+                        <td class="small muted">@proposal.EvidenceJson</td>
+                        <td>
+                            @if (CanReview)
+                            {
+                                <div class="row">
+                                    <button class="btn" @onclick="() => AcceptProposalAsync(proposal.Id)">Accept</button>
+                                    <button class="btn" @onclick="() => RejectProposalAsync(proposal.Id)">Reject</button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (_preview is not null)
+    {
+        <h2>Bexio synchronisation preview</h2>
+        <div class="card">
+            <p class="small muted">Exactly what would be sent to @_preview.Destination, re-checked immediately before posting.</p>
+
+            @if (!_preview.CanSynchronize)
+            {
+                <div class="banner banner-error">Pre-flight failed. This invoice cannot be synchronised until these are resolved.</div>
+                <ValidationIssueList Issues="_preview.Report.Issues" />
+            }
+            else
+            {
+                <div class="banner banner-ok">Pre-flight passed. An approval will queue this invoice for synchronisation.</div>
+            }
+
+            <div class="field-row">
+                <span class="field-label">Bexio contact</span>
+                <span class="field-value">@(_preview.BexioContactName ?? "—") <span class="mono small muted">@_preview.BexioContactId</span></span>
+            </div>
+
+            <table>
+                <thead><tr><th>#</th><th>Text</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th>Bexio tax</th><th>Bexio account</th></tr></thead>
+                <tbody>
+                @foreach (var line in _preview.Lines)
+                {
+                    <tr>
+                        <td>@line.LineNumber</td>
+                        <td>@line.Description</td>
+                        <td class="numeric">@line.Quantity.ToString("0.###")</td>
+                        <td class="numeric"><MoneyText Amount="line.UnitPrice" Currency="_preview.Currency" /></td>
+                        <td class="small">@(line.BexioTaxName ?? line.BexioTaxId ?? "—") @(line.BexioTaxRatePercent is { } r ? $"({r}%)" : "")</td>
+                        <td class="small">@(line.BexioAccountName ?? line.BexioAccountId ?? "—")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            <div class="row right" style="justify-content:flex-end; margin-top:10px">
+                <span>Net <MoneyText Amount="_preview.TotalNet" Currency="_preview.Currency" /></span>
+                <span>Tax <MoneyText Amount="_preview.TotalTax" Currency="_preview.Currency" /></span>
+                <strong>Total <MoneyText Amount="_preview.TotalGross" Currency="_preview.Currency" /></strong>
+            </div>
+        </div>
+    }
+
+    <h2>Actions</h2>
+    <div class="card">
+        <div class="btn-row">
+            <button class="btn" @onclick="RevalidateAsync">Re-run validation</button>
+
+            @if (_invoice.WorkflowState == InvoiceWorkflowState.NeedsReview && CanReview)
+            {
+                <button class="btn" @onclick="VerifyAsync">Mark as verified</button>
+            }
+
+            @if (_invoice.WorkflowState is InvoiceWorkflowState.Validated or InvoiceWorkflowState.HumanVerified && CanReview)
+            {
+                <button class="btn" @onclick="SubmitAsync">Submit for approval</button>
+            }
+
+            @if (_invoice.WorkflowState == InvoiceWorkflowState.ReadyForApproval)
+            {
+                @if (CanApprove)
+                {
+                    <button class="btn btn-primary" @onclick="ApproveAsync" disabled="@(_preview?.CanSynchronize != true)">
+                        Approve and queue for Bexio
+                    </button>
+                    <button class="btn btn-danger" @onclick="RejectAsync">Reject</button>
+                }
+                else
+                {
+                    <span class="small muted">Approving requires the Approver role. You are signed in as @CurrentUser.UserId.</span>
+                }
+            }
+        </div>
+
+        @if (_invoice.WorkflowState == InvoiceWorkflowState.ReadyForApproval && CanApprove)
+        {
+            <div style="margin-top:10px; max-width:520px">
+                <label class="small muted" for="comment">Comment (required when rejecting)</label>
+                <textarea id="comment" rows="2" @bind="_comment"></textarea>
+            </div>
+        }
+
+        <p class="small muted" style="margin-top:12px">
+            There is no action here that posts directly to Bexio. Approval writes a queue entry in the same
+            database transaction, and a background worker performs the synchronisation.
+        </p>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid InvoiceId { get; set; }
+
+    private bool _loading = true;
+    private Invoice? _invoice;
+    private Customer? _customer;
+    private List<InvoiceLine> _lines = [];
+    private List<TaxAssessment> _assessments = [];
+    private List<Domain.Ai.AiProposal> _proposals = [];
+    private List<Domain.Audit.FieldProvenance> _provenance = [];
+    private ValidationReport? _report;
+    private IelBexio.Application.Sync.SyncPreview? _preview;
+    private string? _rawPayload;
+    private string? _message;
+    private bool _messageIsError;
+    private string _comment = string.Empty;
+
+    private bool CanReview => CurrentUser.IsInRole(AppRolesShim.Reviewer) || CurrentUser.IsInRole(AppRolesShim.Approver) || CurrentUser.IsInRole(AppRolesShim.Admin);
+    private bool CanApprove => CurrentUser.IsInRole(AppRolesShim.Approver) || CurrentUser.IsInRole(AppRolesShim.Admin);
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+
+        _invoice = await db.Invoices.AsNoTracking()
+            .Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == InvoiceId && i.TenantId == Tenant.TenantId);
+
+        if (_invoice is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        _lines = _invoice.Lines.OrderBy(l => l.LineNumber).ToList();
+        _customer = _invoice.CustomerId is { } cid ? await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == cid) : null;
+        _assessments = await db.TaxAssessments.AsNoTracking().Where(a => a.InvoiceId == InvoiceId).ToListAsync();
+        _proposals = await db.AiProposals.AsNoTracking()
+            .Where(p => p.EntityId == InvoiceId && p.Status == Domain.Ai.AiProposalStatus.Pending).ToListAsync();
+        _provenance = await db.FieldProvenances.AsNoTracking().Where(p => p.EntityId == InvoiceId).ToListAsync();
+
+        var raw = await db.RawSourcePayloads.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.SourceDocumentId == _invoice.SourceDocumentId
+                                      && p.SourceDocumentVersion == _invoice.SourceDocumentVersion);
+
+        _rawPayload = raw is null ? "(no raw payload retained)" : Prettify(raw.Payload);
+
+        _invoice.Customer = _customer;
+        var validator = new IelBexio.Application.Invoices.InvoiceValidator();
+        _report = validator.Validate(_invoice, _lines);
+
+        try
+        {
+            _preview = await Preflight.BuildAsync(_invoice, _lines, _assessments, requireConnection: true);
+        }
+        catch (Exception ex)
+        {
+            // A preview failure must not blank the whole screen; the reviewer still needs the data.
+            _preview = null;
+            _message = $"The synchronisation preview could not be built: {ex.Message}";
+            _messageIsError = true;
+        }
+
+        _loading = false;
+    }
+
+    private static string Prettify(string json)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+            return System.Text.Json.JsonSerializer.Serialize(document, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return json;
+        }
+    }
+
+    /// <summary>Shows where a field's value came from, which is the whole point of §22.</summary>
+    private string ProvenanceFor(string fieldPath)
+    {
+        var record = _provenance.FirstOrDefault(p => p.FieldPath == fieldPath);
+        if (record is null)
+        {
+            return string.Empty;
+        }
+
+        var origin = record.Origin switch
+        {
+            ValueOrigin.SourceApi => $"from {record.SourceSystem} field {record.SourceFieldPath}",
+            ValueOrigin.Deterministic => $"computed: {record.Transformation}",
+            ValueOrigin.DocumentParser => $"parsed from the document ({record.ExtractionMethod})",
+            ValueOrigin.AiProposalAccepted => $"AI proposal accepted by {record.ModifiedBy}",
+            ValueOrigin.Human => $"corrected by {record.ModifiedBy}",
+            _ => record.Origin.ToString(),
+        };
+
+        return $"↳ {origin}";
+    }
+
+    private async Task RunAsync(Func<Task<IelBexio.Application.Common.Result>> action, string success)
+    {
+        var result = await action();
+        _message = result.Succeeded ? success : $"{result.ErrorCode}: {result.ErrorMessage}";
+        _messageIsError = result.Failed;
+        await LoadAsync();
+    }
+
+    private async Task RevalidateAsync()
+    {
+        var result = await Processing.ProcessAsync(InvoiceId);
+        _message = result.Succeeded ? "Validation re-run." : $"{result.ErrorCode}: {result.ErrorMessage}";
+        _messageIsError = result.Failed;
+        await LoadAsync();
+    }
+
+    private Task VerifyAsync() => RunAsync(() => Review.VerifyAsync(InvoiceId), "Marked as verified.");
+    private Task SubmitAsync() => RunAsync(() => Review.SubmitForApprovalAsync(InvoiceId), "Submitted for approval.");
+    private Task ApproveAsync() => RunAsync(() => Approval.ApproveAsync(InvoiceId, _comment), "Approved and queued for Bexio synchronisation.");
+    private Task RejectAsync() => RunAsync(() => Approval.RejectAsync(InvoiceId, _comment), "Rejected and returned to review.");
+    private Task VerifyTaxAsync(Guid id) => RunAsync(() => Review.VerifyTaxAsync(id, null), "Tax conclusion verified.");
+    private Task AcceptProposalAsync(Guid id) => RunAsync(() => Review.AcceptAiProposalAsync(id), "Proposal accepted and applied as your decision.");
+    private Task RejectProposalAsync(Guid id) => RunAsync(() => Review.RejectAiProposalAsync(id, "Rejected during review"), "Proposal rejected.");
+}

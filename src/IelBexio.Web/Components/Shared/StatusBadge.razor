@@ -1,0 +1,35 @@
+@* 
+    Renders a workflow state or status with text AND an icon AND colour.
+    Specification §15 requires text and icons as well as colour: a reviewer who is colour-blind, or
+    reading a printed copy, must still be able to tell an approved invoice from a rejected one.
+*@
+<span class="badge @CssClass" title="@Title">
+    <span aria-hidden="true">@Icon</span>
+    <span>@Text</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public StatusTone Tone { get; set; } = StatusTone.Info;
+
+    private string CssClass => Tone switch
+    {
+        StatusTone.Ok => "badge-ok",
+        StatusTone.Warning => "badge-warn",
+        StatusTone.Error => "badge-error",
+        StatusTone.Accent => "badge-accent",
+        _ => "badge-info",
+    };
+
+    private string Icon => Tone switch
+    {
+        StatusTone.Ok => "✓",
+        StatusTone.Warning => "⚠",
+        StatusTone.Error => "✕",
+        StatusTone.Accent => "●",
+        _ => "○",
+    };
+
+    public enum StatusTone { Info, Ok, Warning, Error, Accent }
+}

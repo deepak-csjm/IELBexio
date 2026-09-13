@@ -1,0 +1,128 @@
+@page "/customers"
+@rendermode InteractiveServer
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IelBexio.Application.Abstractions.ITenantContext Tenant
+@inject IelBexio.Application.Mapping.IMappingService Mappings
+@inject IelBexio.Application.Abstractions.ICurrentUser CurrentUser
+
+<PageTitle>Customers</PageTitle>
+
+<h1>Customers</h1>
+<p class="page-subtitle">Canonical customers and the Bexio contact each is mapped to.</p>
+
+@if (_message is not null)
+{
+    <div class="banner banner-ok">@_message</div>
+}
+
+@if (_rows.Count == 0)
+{
+    <div class="card"><p class="muted">No customers have been imported yet.</p></div>
+}
+else
+{
+    <table>
+        <thead><tr><th>Customer</th><th>Source</th><th>VAT / UID</th><th>Country</th><th>Bexio contact</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr>
+                <td>
+                    <div class="stack">
+                        <strong>@row.Customer.DisplayName</strong>
+                        @if (row.Customer.IsAnonymised)
+                        {
+                            <StatusBadge Text="Identity not supplied by source" Tone="StatusBadge.StatusTone.Warning" />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(row.Customer.Email))
+                        {
+                            <span class="small muted">@row.Customer.Email</span>
+                        }
+                    </div>
+                </td>
+                <td><span class="badge badge-info">@row.Customer.SourceSystem</span></td>
+                <td class="mono small">@(row.Customer.VatNumber ?? "—")</td>
+                <td>@(row.Customer.CountryCode ?? "—")</td>
+                <td>
+                    @if (row.Mapping is null)
+                    {
+                        <StatusBadge Text="Not mapped" Tone="StatusBadge.StatusTone.Error" Title="Pre-flight will block synchronisation until this is mapped." />
+                    }
+                    else
+                    {
+                        @(row.Mapping.BexioContactName ?? row.Mapping.BexioContactId)
+                        <div class="small"><span class="badge badge-info">@row.Mapping.Origin</span></div>
+                    }
+                </td>
+                <td>
+                    @if (CanEdit && _contacts.Count > 0)
+                    {
+                        <div class="row">
+                            <select @bind="_selected[row.Customer.Id]" style="width:auto">
+                                <option value="">Choose a Bexio contact…</option>
+                                @foreach (var contact in _contacts)
+                                {
+                                    <option value="@contact.BexioId">@contact.Name</option>
+                                }
+                            </select>
+                            <button class="btn" @onclick="() => MapAsync(row.Customer.Id)">Map</button>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private sealed record Row(Customer Customer, Domain.Mapping.CustomerMapping? Mapping);
+
+    private List<Row> _rows = [];
+    private List<Domain.Bexio.BexioReferenceItem> _contacts = [];
+    private readonly Dictionary<Guid, string> _selected = [];
+    private string? _message;
+
+    private bool CanEdit => CurrentUser.IsInRole(AppRolesShim.Admin)
+                            || CurrentUser.IsInRole(AppRolesShim.IntegrationManager)
+                            || CurrentUser.IsInRole(AppRolesShim.Reviewer);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.SuppressTenantFilter = true;
+        var tenantId = Tenant.TenantId;
+
+        var customers = await db.Customers.Where(c => c.TenantId == tenantId).OrderBy(c => c.CompanyName).Take(200).ToListAsync();
+        var mappings = await db.CustomerMappings.Where(m => m.TenantId == tenantId && m.IsActive).ToListAsync();
+
+        _rows = customers
+            .Select(c => new Row(c, mappings.FirstOrDefault(m => m.CustomerId == c.Id)))
+            .ToList();
+
+        foreach (var row in _rows)
+        {
+            _selected.TryAdd(row.Customer.Id, string.Empty);
+        }
+
+        _contacts = await db.BexioReferenceItems
+            .Where(r => r.TenantId == tenantId && r.Kind == Domain.Bexio.BexioReferenceKind.Contact)
+            .OrderBy(r => r.Name).ToListAsync();
+    }
+
+    private async Task MapAsync(Guid customerId)
+    {
+        if (!_selected.TryGetValue(customerId, out var contactId) || string.IsNullOrWhiteSpace(contactId))
+        {
+            return;
+        }
+
+        var contact = _contacts.First(c => c.BexioId == contactId);
+        await Mappings.UpsertCustomerMappingAsync(customerId, contact.BexioId, contact.Name, Domain.Mapping.MappingOrigin.Manual, CurrentUser.UserId);
+
+        _message = $"Mapped to Bexio contact '{contact.Name}'.";
+        await LoadAsync();
+    }
+}

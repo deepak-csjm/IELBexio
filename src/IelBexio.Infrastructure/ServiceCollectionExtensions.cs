@@ -66,6 +66,22 @@ public static class ServiceCollectionExtensions
                     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required."),
                 npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
 
+        // Blazor components outlive a single request, so they resolve their own short-lived context
+        // from a factory rather than sharing the request-scoped one — which would otherwise be disposed
+        // under them, or mutated concurrently by two renders of the same circuit.
+        //
+        // The factory is Scoped rather than Singleton on purpose: AddDbContext above registers
+        // DbContextOptions as scoped, and a singleton factory cannot consume a scoped dependency. In a
+        // Blazor Server circuit the scope lives as long as the circuit, which is exactly the lifetime a
+        // component needs. Contexts the factory creates receive no ITenantContext, so every component
+        // filters by tenant explicitly rather than relying on the global filter.
+        services.AddDbContextFactory<AppDbContext>((sp, options) =>
+            options.UseNpgsql(
+                configuration.GetConnectionString("Postgres")
+                    ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required."),
+                npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)),
+            lifetime: ServiceLifetime.Scoped);
+
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
         services.AddScoped<IAuditWriter, AuditWriter>();
         services.AddScoped<IProvenanceWriter, ProvenanceWriter>();

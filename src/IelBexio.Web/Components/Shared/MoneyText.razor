@@ -1,0 +1,11 @@
+@* Renders an amount with its currency, right-aligned and tabular so columns line up for comparison. *@
+<span class="mono nowrap">@Formatted</span>
+
+@code {
+    [Parameter, EditorRequired] public decimal Amount { get; set; }
+    [Parameter, EditorRequired] public string Currency { get; set; } = "CHF";
+
+    private string Formatted =>
+        $"{decimal.Round(Amount, Money.ScaleFor(Currency), MidpointRounding.ToEven)
+            .ToString($"N{Money.ScaleFor(Currency)}", System.Globalization.CultureInfo.InvariantCulture)} {Currency}";
+}
